@@ -1,0 +1,38 @@
+{
+  "url": "http://127.0.0.1:8081/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "Pokies Vault",
+      "hasCanvas": false,
+      "bodyTextLen": 32987,
+      "bodyTextHash": "6d8b5e52a86519d1cf278db6c104068e3d861bb13f7bf4c2c24b900a15ac6954",
+      "bodyTextPrefix": "POKIES VAULT FETCHER MENU Not visited: Off View: Groups Wallets:",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-built.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "Pokies Vault",
+      "hasCanvas": false,
+      "bodyTextLen": 32987,
+      "bodyTextHash": "6d8b5e52a86519d1cf278db6c104068e3d861bb13f7bf4c2c24b900a15ac6954",
+      "bodyTextPrefix": "POKIES VAULT FETCHER MENU Not visited: Off View: Groups Wallets:",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-built-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/app-builder-built.json",
+  "divergesFromBaseline": false,
+  "baselineReasons": []
+}
