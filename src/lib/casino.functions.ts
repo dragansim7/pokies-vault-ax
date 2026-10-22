@@ -3,7 +3,7 @@ import type { AccountRow } from "@/lib/parse-account";
 
 export type StatusResult = {
   domain: string;
-  status: "live" | "slow" | "dead" | "redirect";
+  status: "live" | "slow" | "dead" | "redirect" | "unknown";
   ms: number;
 };
 
@@ -14,16 +14,23 @@ export const fetchCasinoAccount = createServerFn({ method: "POST" })
     return run(data);
   });
 
+export const fetchCasinoBatchFn = createServerFn({ method: "POST" })
+  .validator((data: { domains: string[]; phone: string; password: string }) => data)
+  .handler(async ({ data }): Promise<AccountRow[]> => {
+    const { fetchCasinoBatch } = await import("@/lib/casino.impl.server");
+    return fetchCasinoBatch(data);
+  });
+
+export const fetchAllStatusesFn = createServerFn({ method: "POST" })
+  .validator((data: Record<string, never>) => data ?? {})
+  .handler(async (): Promise<Record<string, StatusResult["status"]>> => {
+    const { fetchAllStatuses } = await import("@/lib/casino.impl.server");
+    return fetchAllStatuses();
+  });
+
 export const checkSiteStatus = createServerFn({ method: "POST" })
   .validator((data: { domain: string }) => data)
   .handler(async ({ data }): Promise<StatusResult> => {
     const { checkSiteStatus: run } = await import("@/lib/casino.impl.server");
-    return run(data.domain);
-  });
-
-export const resolveSiteIcon = createServerFn({ method: "POST" })
-  .validator((data: { domain: string }) => data)
-  .handler(async ({ data }): Promise<{ domain: string; icon: string }> => {
-    const { resolveSiteIcon: run } = await import("@/lib/casino.impl.server");
     return run(data.domain);
   });

@@ -26,7 +26,7 @@ export function isSortMode(value: unknown): value is SortMode {
 const CATALOG_INDEX = new Map(CATALOG.map((site, index) => [site.domain, index]));
 const CATALOG_META = new Map(CATALOG.map((site) => [site.domain, site]));
 
-export function catalogMeta(domain: string): { domain: string; group: SiteGroup; addedAt: string } {
+export function catalogMeta(domain: string): { domain: string; group: SiteGroup; addedAt: string | null } {
   return CATALOG_META.get(domain) ?? { domain, group: "latest", addedAt: "" };
 }
 
@@ -62,8 +62,8 @@ function desc(a: number | null, b: number | null): number {
 }
 
 export function compareSites(
-  a: { domain: string; group: SiteGroup; addedAt: string },
-  b: { domain: string; group: SiteGroup; addedAt: string },
+  a: { domain: string; group: SiteGroup; addedAt: string | null },
+  b: { domain: string; group: SiteGroup; addedAt: string | null },
   rowA: AccountRow | undefined,
   rowB: AccountRow | undefined,
   sort: SortMode,

@@ -8,7 +8,7 @@ import {
 const UA =
   "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36";
 
-export type StatusKind = "live" | "slow" | "dead" | "redirect";
+export type StatusKind = "live" | "slow" | "dead" | "redirect" | "unknown";
 
 type ApiBody = {
   status?: string;
@@ -158,6 +158,60 @@ export async function fetchCasinoAccount(input: {
   }
 }
 
+export async function fetchCasinoBatch(input: {
+  domains: string[];
+  phone: string;
+  password: string;
+}): Promise<AccountRow[]> {
+  const { domains, phone, password } = input;
+  const out: AccountRow[] = new Array(domains.length);
+  let cursor = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(6, domains.length) }, async () => {
+      for (;;) {
+        const i = cursor++;
+        if (i >= domains.length) return;
+        out[i] = await fetchCasinoAccount({ domain: domains[i] ?? "", phone, password });
+      }
+    }),
+  );
+  return out;
+}
+
+export async function fetchAllStatuses(): Promise<Record<string, StatusKind>> {
+  const response = await fetch("https://intel.bestpokieslist.online/public/statuses", {
+    headers: { accept: "application/json" },
+    signal: AbortSignal.timeout(12_000),
+  });
+  const body: unknown = await response.json();
+  const list = Array.isArray(body)
+    ? body
+    : body && typeof body === "object" && Array.isArray((body as { domains?: unknown }).domains)
+      ? (body as { domains: unknown[] }).domains
+      : body && typeof body === "object" && Array.isArray((body as { statuses?: unknown }).statuses)
+        ? (body as { statuses: unknown[] }).statuses
+        : [];
+  const map: Record<string, StatusKind> = {};
+  for (const item of list) {
+    if (!item || typeof item !== "object") continue;
+    const domain = normalizeDomain(String((item as { domain?: unknown }).domain ?? ""));
+    if (!isPublicDomain(domain)) continue;
+    const raw = String((item as { status?: unknown }).status ?? "").toLowerCase();
+    const status: StatusKind =
+      raw === "live" || raw === "up" || raw === "ok"
+        ? "live"
+        : raw === "slow"
+          ? "slow"
+          : raw === "redirect"
+            ? "redirect"
+            : raw === "unknown"
+              ? "unknown"
+              : "dead";
+    map[domain] = status;
+  }
+  return map;
+}
+
 export async function checkSiteStatus(rawDomain: string): Promise<{
   domain: string;
   status: StatusKind;
@@ -189,49 +243,5 @@ export async function checkSiteStatus(rawDomain: string): Promise<{
     return { domain, status: "dead", ms };
   } catch {
     return { domain, status: "dead", ms: Date.now() - started };
-  }
-}
-
-function iconFromHtml(html: string, base: string): string | null {
-  const tags = html.match(/<link\b[^>]*>/gi) ?? [];
-  let icon: string | null = null;
-  let apple: string | null = null;
-  for (const tag of tags) {
-    const rel = (/rel=["']([^"']+)["']/i.exec(tag)?.[1] ?? "").toLowerCase();
-    const href = /href=["']([^"']+)["']/i.exec(tag)?.[1];
-    if (!href) continue;
-    const parts = rel.split(/\s+/);
-    if (parts.includes("icon") || rel.includes("shortcut")) icon = href;
-    else if (rel.includes("apple-touch-icon") && !apple) apple = href;
-  }
-  const picked = icon || apple;
-  if (!picked) return null;
-  try {
-    const url = new URL(picked, base);
-    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
-    const host = normalizeDomain(url.hostname);
-    if (!isPublicDomain(host)) return null;
-    return url.toString();
-  } catch {
-    return null;
-  }
-}
-
-export async function resolveSiteIcon(rawDomain: string): Promise<{ domain: string; icon: string }> {
-  const domain = normalizeDomain(rawDomain);
-  if (!isPublicDomain(domain)) return { domain, icon: "" };
-  const fallback = `https://${domain}/favicon.ico`;
-  try {
-    const home = await fetch(`https://${domain}/`, {
-      redirect: "follow",
-      signal: AbortSignal.timeout(8_000),
-      headers: { accept: "text/html", "user-agent": UA },
-    });
-    const finalHost = normalizeDomain(new URL(home.url).hostname);
-    const base = isPublicDomain(finalHost) ? home.url : `https://${domain}/`;
-    const html = (await home.text()).slice(0, 200_000);
-    return { domain, icon: iconFromHtml(html, base) || (isPublicDomain(finalHost) ? `https://${finalHost}/favicon.ico` : fallback) };
-  } catch {
-    return { domain, icon: fallback };
   }
 }

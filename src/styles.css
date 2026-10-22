@@ -616,6 +616,8 @@ html[data-theme="royal"] {
 .site-meta.redirect i { background: var(--color-cyan); }
 .site-meta.dead { color: var(--color-dead); }
 .site-meta.dead i { background: var(--color-dead); }
+.site-meta.unknown { color: var(--color-muted); }
+.site-meta.unknown i { background: var(--color-muted); }
 
 .wallet-line {
   color: var(--color-cyan);

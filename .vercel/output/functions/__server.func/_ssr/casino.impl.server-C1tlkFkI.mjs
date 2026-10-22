@@ -1,5 +1,5 @@
 import { n as normalizeDomain, t as isPublicDomain } from "./domain-CILCWuBu.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/casino.impl.server-CqA9z88f.js
+//#region node_modules/.nitro/vite/services/ssr/assets/casino.impl.server-C1tlkFkI.js
 function num(value) {
 	if (value == null || value === "") return null;
 	const n = typeof value === "number" ? value : Number(value);
@@ -26,6 +26,60 @@ function categoryOf(name, custom) {
 	if (n.includes("refer") || n.includes("invite") || n.includes("downline") || n.includes("mate")) return "referral";
 	if (n.includes("welcome") || n.includes("sign up") || n.includes("signup") || n.includes("new member")) return "new";
 	return null;
+}
+function litAmount(value) {
+	const amount = num(value);
+	if (amount == null || amount <= 0) return null;
+	return Math.round(amount * 100) / 100;
+}
+function promoSection(bonus) {
+	const tx = String(bonus.transactionType ?? "").toUpperCase();
+	if (tx === "REBATE") return "rebate";
+	if (tx === "COMMISSION") return "commission";
+	const cfg = parseClaimConfig(bonus.claimConfig);
+	const custom = String(cfg.customBonus ?? "");
+	const name = cleanName(String(bonus.name ?? ""));
+	const key = categoryOf(name, custom);
+	if (key === "rebate") return "rebate";
+	if (!key && /cash ?back/i.test(`${custom} ${name}`)) return "rebate";
+	if (key === "commission") return "commission";
+	if (key === "share" || key === "referral") return "referral";
+	return "other";
+}
+function promoBoxesFrom(bonusRaw) {
+	let rebate = 0;
+	let commission = 0;
+	let referral = 0;
+	const others = [];
+	for (const item of bonusRaw) {
+		const bonus = asRecord(item);
+		if (!bonus) continue;
+		const amount = litAmount(bonus.amount);
+		if (amount == null) continue;
+		const section = promoSection(bonus);
+		if (section === "rebate") rebate += amount;
+		else if (section === "commission") commission += amount;
+		else if (section === "referral") referral += amount;
+		else others.push({
+			label: cleanName(String(bonus.name ?? "")) || "Bonus",
+			amount
+		});
+	}
+	const boxes = [];
+	if (rebate > 0) boxes.push({
+		label: "Rebate",
+		amount: Math.round(rebate * 100) / 100
+	});
+	if (commission > 0) boxes.push({
+		label: "Commission",
+		amount: Math.round(commission * 100) / 100
+	});
+	if (referral > 0) boxes.push({
+		label: "Referral / Downline Share Bonus",
+		amount: Math.round(referral * 100) / 100
+	});
+	boxes.push(...others);
+	return boxes;
 }
 function asRecord(value) {
 	if (!value || typeof value !== "object" || Array.isArray(value)) return null;
@@ -129,10 +183,11 @@ function parseSyncUser(domain, user) {
 	const referral = pick(buckets.referral);
 	const fresh = pick(buckets.new);
 	const rebate = pick(buckets.rebate);
+	const promoBoxes = promoBoxesFrom(bonusRaw);
 	return {
 		domain,
 		ok: true,
-		hasData: Boolean(cash > .001 || commission || share || referral || fresh || rebate || availableBonuses.length),
+		hasData: Boolean(wallets.some((wallet) => wallet.balance > .001) || cash > .001 || promoBoxes.length),
 		cash,
 		cashWalletName,
 		cashMinWithdrawal,
@@ -143,7 +198,8 @@ function parseSyncUser(domain, user) {
 		referral,
 		new: fresh,
 		rebate,
-		availableBonuses
+		availableBonuses,
+		promoBoxes
 	};
 }
 function accountError(domain, code, message) {
@@ -238,6 +294,39 @@ async function fetchCasinoAccount(input) {
 		return classifyFailure(domain, error instanceof Error ? error.message : "", "Could not reach site");
 	}
 }
+async function fetchCasinoBatch(input) {
+	const { domains, phone, password } = input;
+	const out = new Array(domains.length);
+	let cursor = 0;
+	await Promise.all(Array.from({ length: Math.min(6, domains.length) }, async () => {
+		for (;;) {
+			const i = cursor++;
+			if (i >= domains.length) return;
+			out[i] = await fetchCasinoAccount({
+				domain: domains[i] ?? "",
+				phone,
+				password
+			});
+		}
+	}));
+	return out;
+}
+async function fetchAllStatuses() {
+	const body = await (await fetch("https://intel.bestpokieslist.online/public/statuses", {
+		headers: { accept: "application/json" },
+		signal: AbortSignal.timeout(12e3)
+	})).json();
+	const list = Array.isArray(body) ? body : body && typeof body === "object" && Array.isArray(body.domains) ? body.domains : body && typeof body === "object" && Array.isArray(body.statuses) ? body.statuses : [];
+	const map = {};
+	for (const item of list) {
+		if (!item || typeof item !== "object") continue;
+		const domain = normalizeDomain(String(item.domain ?? ""));
+		if (!isPublicDomain(domain)) continue;
+		const raw = String(item.status ?? "").toLowerCase();
+		map[domain] = raw === "live" || raw === "up" || raw === "ok" ? "live" : raw === "slow" ? "slow" : raw === "redirect" ? "redirect" : raw === "unknown" ? "unknown" : "dead";
+	}
+	return map;
+}
 async function checkSiteStatus(rawDomain) {
 	const domain = normalizeDomain(rawDomain);
 	if (!isPublicDomain(domain)) return {
@@ -282,4 +371,4 @@ async function checkSiteStatus(rawDomain) {
 	}
 }
 //#endregion
-export { checkSiteStatus, fetchCasinoAccount };
+export { checkSiteStatus, fetchAllStatuses, fetchCasinoAccount, fetchCasinoBatch };

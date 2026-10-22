@@ -1,9 +1,9 @@
 import { i as __toESM } from "../_runtime.mjs";
 import { S as require_jsx_runtime, Y as require_react } from "../_libs/@tanstack/react-router+[...].mjs";
-import { c as Search, f as Eye, g as ArrowUpDown, h as Bookmark, n as X, r as Wallet } from "../_libs/lucide-react.mjs";
-import { n as useVault } from "./router-CSjmOi0t.mjs";
-import { a as formatAdded, c as useServerFn, n as CATALOG, o as initials, r as checkSiteStatus, s as money, t as AppFrame } from "./format-DC-2W_RD.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/routes-1oQIH9yf.js
+import { _ as ArrowUpDown, c as Search, g as Bookmark, n as X, p as Eye, r as Wallet } from "../_libs/lucide-react.mjs";
+import { a as compareSites, i as chosenBonus, n as useVault, o as CATALOG } from "./router-Bnqcnrzc.mjs";
+import { c as useServerFn, i as fetchAllStatusesFn, n as SiteIcon, o as formatAdded, r as checkSiteStatus, s as money, t as AppFrame } from "./format-SzEQ0MdY.mjs";
+//#region node_modules/.nitro/vite/services/ssr/assets/routes-CnvIiGGw.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 var GROUP_LABEL = {
@@ -19,37 +19,54 @@ var STATUS_LABEL = {
 	live: "Live",
 	slow: "Slow",
 	redirect: "Redirect",
-	dead: "Down"
+	dead: "Down",
+	unknown: "Unknown"
 };
+var STATUS_CACHE_KEY = "vault-statuses";
+var STATUS_CACHE_TTL = 9e5;
+function readStatusCache() {
+	if (typeof localStorage === "undefined") return null;
+	try {
+		const raw = localStorage.getItem(STATUS_CACHE_KEY);
+		if (!raw) return null;
+		const parsed = JSON.parse(raw);
+		if (!parsed.at || !parsed.map || Date.now() - parsed.at >= STATUS_CACHE_TTL) return null;
+		return parsed.map;
+	} catch {
+		return null;
+	}
+}
+function writeStatusCache(map) {
+	try {
+		localStorage.setItem(STATUS_CACHE_KEY, JSON.stringify({
+			at: Date.now(),
+			map
+		}));
+	} catch {}
+}
+function bonusSortName(mode) {
+	if (mode === "new") return "Signup bonus";
+	if (mode === "commission") return "Commission";
+	if (mode === "referral") return "Referral";
+	if (mode === "rebate") return "Rebate";
+	return "Share";
+}
 function bonusOf(row, mode) {
 	if (mode === "none") return null;
-	return row[mode];
-}
-function SiteIcon({ domain }) {
-	const tones = [
-		"tone-cyan",
-		"tone-violet",
-		"tone-pink",
-		"tone-live"
-	];
-	const tone = tones[domain.charCodeAt(0) % tones.length] ?? "tone-cyan";
-	return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-		className: `site-fallback ${tone}`,
-		children: initials(domain)
-	});
+	return chosenBonus(row, mode);
 }
 function Directory() {
 	const { state, patch, markVisited, toggleMine } = useVault();
 	const statusFn = useServerFn(checkSiteStatus);
+	const allStatusesFn = useServerFn(fetchAllStatusesFn);
+	const statusFnRef = (0, import_react.useRef)(statusFn);
+	const allStatusesFnRef = (0, import_react.useRef)(allStatusesFn);
+	statusFnRef.current = statusFn;
+	allStatusesFnRef.current = allStatusesFn;
 	const [query, setQuery] = (0, import_react.useState)("");
 	const [searchReady, setSearchReady] = (0, import_react.useState)(false);
 	const [sortOpen, setSortOpen] = (0, import_react.useState)(false);
-	const [statuses, setStatuses] = (0, import_react.useState)({});
-	const seen = (0, import_react.useRef)(/* @__PURE__ */ new Set());
-	const queue = (0, import_react.useRef)([]);
-	const running = (0, import_react.useRef)(0);
-	const statusFnRef = (0, import_react.useRef)(statusFn);
-	statusFnRef.current = statusFn;
+	const [statuses, setStatuses] = (0, import_react.useState)(() => readStatusCache() ?? {});
 	(0, import_react.useEffect)(() => {
 		setSearchReady(true);
 	}, []);
@@ -76,15 +93,7 @@ function Directory() {
 			if (q && !site.domain.includes(q)) return false;
 			return true;
 		});
-		const cashOf = (domain) => {
-			const row = fetchMap.get(domain);
-			return row?.ok ? row.cash : -1;
-		};
-		if (state.sort === "az") list = [...list].sort((a, b) => a.domain.localeCompare(b.domain));
-		if (state.sort === "za") list = [...list].sort((a, b) => b.domain.localeCompare(a.domain));
-		if (state.sort === "new") list = [...list].sort((a, b) => String(b.addedAt).localeCompare(String(a.addedAt)));
-		if (state.sort === "balance") list = [...list].sort((a, b) => cashOf(b.domain) - cashOf(a.domain) || a.domain.localeCompare(b.domain));
-		return list;
+		return state.sort === "default" ? list : [...list].sort((a, b) => compareSites(a, b, fetchMap.get(a.domain), fetchMap.get(b.domain), state.sort, state.bonusMode));
 	}, [
 		sites,
 		query,
@@ -93,82 +102,73 @@ function Directory() {
 		state.notVisited,
 		state.visited,
 		state.sort,
+		state.bonusMode,
 		fetchMap
 	]);
 	const grouped = state.sort === "default" && !query.trim() && !state.mineOnly && !state.notVisited;
+	const domainKey = sites.map((site) => site.domain).join("\n");
 	(0, import_react.useEffect)(() => {
-		const nodes = document.querySelectorAll("[data-status-domain]");
-		const pump = () => {
-			while (running.current < 4 && queue.current.length) {
-				const domain = queue.current.shift();
-				if (!domain) break;
-				running.current += 1;
-				statusFnRef.current({ data: { domain } }).then((result) => {
-					setStatuses((current) => ({
-						...current,
-						[domain]: result.status
-					}));
+		let cancelled = false;
+		const domains = domainKey ? domainKey.split("\n") : [];
+		const probeMissing = async (map) => {
+			const missing = domains.filter((domain) => !(domain in map));
+			const probe = missing.slice(0, 40);
+			const next = { ...map };
+			for (const domain of missing.slice(40)) next[domain] = "unknown";
+			if (!probe.length || cancelled) return next;
+			if (!cancelled) setStatuses({ ...next });
+			let cursor = 0;
+			const worker = async () => {
+				for (;;) {
+					if (cancelled) return;
+					const index = cursor;
+					cursor += 1;
+					if (index >= probe.length) return;
+					const domain = probe[index] ?? "";
 					try {
-						sessionStorage.setItem(`vault-status:${domain}`, JSON.stringify({
-							at: Date.now(),
-							status: result.status
-						}));
-					} catch {}
-				}).catch(() => {
-					setStatuses((current) => ({
-						...current,
-						[domain]: "dead"
-					}));
-				}).finally(() => {
-					running.current -= 1;
-					pump();
-				});
-			}
-		};
-		const enqueue = (domain) => {
-			if (seen.current.has(domain)) return;
-			seen.current.add(domain);
-			try {
-				const cached = sessionStorage.getItem(`vault-status:${domain}`);
-				if (cached) {
-					const parsed = JSON.parse(cached);
-					if (Date.now() - parsed.at < 6e5) {
-						setStatuses((current) => ({
-							...current,
-							[domain]: parsed.status
-						}));
-						return;
+						const result = await statusFnRef.current({ data: { domain } });
+						next[domain] = result.status;
+					} catch {
+						next[domain] = "dead";
 					}
+					if (!cancelled) setStatuses({ ...next });
 				}
-			} catch {}
-			setStatuses((current) => ({
-				...current,
-				[domain]: "checking"
-			}));
-			queue.current.push(domain);
-			pump();
+			};
+			await Promise.all(Array.from({ length: Math.min(4, probe.length) }, () => worker()));
+			return next;
 		};
-		const observer = new IntersectionObserver((entries) => {
-			for (const entry of entries) {
-				if (!entry.isIntersecting) continue;
-				const domain = entry.target.dataset.statusDomain;
-				if (domain) enqueue(domain);
+		const cached = readStatusCache();
+		if (cached) {
+			setStatuses(cached);
+			if (domains.filter((domain) => !(domain in cached)).length) probeMissing(cached).then((filled) => {
+				if (!cancelled) writeStatusCache(filled);
+			});
+			return () => {
+				cancelled = true;
+			};
+		}
+		(async () => {
+			let map = {};
+			try {
+				map = await allStatusesFnRef.current({ data: {} });
+			} catch {
+				map = {};
 			}
-		}, { rootMargin: "160px" });
-		nodes.forEach((node) => observer.observe(node));
-		return () => observer.disconnect();
-	}, [
-		filtered,
-		grouped,
-		state.view
-	]);
+			if (cancelled) return;
+			setStatuses(map);
+			const filled = await probeMissing(map);
+			if (!cancelled) writeStatusCache(filled);
+		})();
+		return () => {
+			cancelled = true;
+		};
+	}, [domainKey]);
 	function renderCard(site, compact = false) {
 		const row = fetchMap.get(site.domain);
 		const status = statuses[site.domain] ?? "checking";
 		const bonus = row?.ok ? bonusOf(row, state.bonusMode) : null;
 		return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", {
 			className: compact ? "site-card compact" : "site-card",
-			"data-status-domain": site.domain,
 			children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("a", {
 				className: "site-hit",
 				href: `https://${site.domain}/`,
@@ -368,34 +368,82 @@ function Directory() {
 							children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(X, { size: 18 })
 						})]
 					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h3", { children: "Sort by" }),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+						className: "hint",
+						children: "Same order for the homepage cards and the bonus fetcher results."
+					}),
 					[
-						["default", "Featured groups"],
-						["az", "Domain A–Z"],
-						["za", "Domain Z–A"],
-						["new", "Newest added"],
-						["balance", "Wallet balance"]
-					].map(([id, label]) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+						["default", "Default order"],
+						["az", "Domain name — A → Z"],
+						["za", "Domain name — Z → A"],
+						["balance", "Highest balance"],
+						["turnover", "Best turnover"],
+						["cashout", "Lowest cash-out"],
+						["errors", "Errors"],
+						["popular", "Most popular"],
+						["norefer", "Accounts without referlinks"],
+						["shareAmount", `${bonusSortName(state.bonusMode)} — biggest amount`],
+						["shareMax", `${bonusSortName(state.bonusMode)} — highest max`],
+						["shareTurn", `${bonusSortName(state.bonusMode)} — lowest turnover`],
+						["new", "Newest"]
+					].map(([id, label]) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
 						type: "button",
 						className: state.sort === id ? "choice on" : "choice",
 						onClick: () => patch({ sort: id }),
-						children: label
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("i", { className: "radio" }), label]
 					}, id)),
 					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h3", {
 						className: "section-label",
-						children: "Show on cards"
+						children: "Bonus display"
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+						className: "hint",
+						children: "Highlights that bonus on every card. The three “chosen bonus” sorts above use it."
 					}),
 					[
-						["none", "Nothing extra"],
-						["new", "Welcome"],
-						["share", "Share"],
-						["commission", "Commission"],
-						["referral", "Referral"],
-						["rebate", "Rebate"]
-					].map(([id, label]) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+						[
+							"none",
+							"None",
+							""
+						],
+						[
+							"new",
+							"Signup bonus",
+							"🎁"
+						],
+						[
+							"share",
+							"Share bonus",
+							"🤝"
+						],
+						[
+							"commission",
+							"Commission",
+							"💸"
+						],
+						[
+							"referral",
+							"Referral bonus",
+							"👥"
+						],
+						[
+							"rebate",
+							"Rebate bonus",
+							"♻️"
+						]
+					].map(([id, label, emoji]) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
 						type: "button",
 						className: state.bonusMode === id ? "choice on" : "choice",
 						onClick: () => patch({ bonusMode: id }),
-						children: label
+						children: [
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("i", { className: "radio" }),
+							emoji ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+								"aria-hidden": "true",
+								children: emoji
+							}) : null,
+							label
+						]
 					}, id)),
 					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 						type: "button",

@@ -1,3 +1,9 @@
 {
-  "installCommand": "npm install --omit=dev --no-audit --no-fund"
+  "installCommand": "npm install --omit=dev --no-audit --no-fund",
+  "regions": ["syd1"],
+  "functions": {
+    "__server.func": {
+      "maxDuration": 60
+    }
+  }
 }

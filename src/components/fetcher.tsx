@@ -1,17 +1,48 @@
 import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { ChevronLeft, Eye, EyeOff, Loader2 } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CATALOG } from "@/data/sites";
 import { useVault, type AttentionMark, type BonusMode, type FallbackCred } from "@/components/vault";
 import { SiteIcon } from "@/components/site-icon";
-import { fetchCasinoAccount } from "@/lib/casino.functions";
+import { fetchCasinoBatchFn } from "@/lib/casino.functions";
 import { isPublicDomain, normalizeDomain } from "@/lib/domain";
 import { money, formatAdded } from "@/lib/format";
 import { catalogMeta, chosenBonus, compareSites } from "@/lib/order";
 import type { AccountCode, AccountErr, AccountOk, AccountRow, BonusView } from "@/lib/parse-account";
 
 const PAGE = 12;
+const BATCH = 10;
+const RUN_KEY = "vault-run";
+
+type RunCheckpoint = { at: number; done: string[]; rows: AccountRow[] };
+
+function readRun(): RunCheckpoint | null {
+  if (typeof localStorage === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(RUN_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<RunCheckpoint>;
+    if (!parsed || !Array.isArray(parsed.done) || !Array.isArray(parsed.rows)) return null;
+    return { at: typeof parsed.at === "number" ? parsed.at : Date.now(), done: parsed.done, rows: parsed.rows };
+  } catch {
+    return null;
+  }
+}
+
+function writeRun(checkpoint: RunCheckpoint) {
+  try {
+    localStorage.setItem(RUN_KEY, JSON.stringify(checkpoint));
+  } catch {
+    /* ignore quota */
+  }
+}
+
+function chunkDomains(domains: string[]): string[][] {
+  const batches: string[][] = [];
+  for (let i = 0; i < domains.length; i += BATCH) batches.push(domains.slice(i, i + BATCH));
+  return batches;
+}
 
 const TONES = ["tone-0", "tone-1", "tone-2", "tone-3", "tone-4"] as const;
 
@@ -277,7 +308,7 @@ function NeedsAttention({
 
 export function Fetcher() {
   const { state, patch, rememberAccount, saveFetch } = useVault();
-  const fetchOne = useServerFn(fetchCasinoAccount);
+  const fetchBatch = useServerFn(fetchCasinoBatchFn);
   const [showPassword, setShowPassword] = useState(false);
   const [advanced, setAdvanced] = useState(false);
   const [single, setSingle] = useState("");
@@ -289,9 +320,15 @@ export function Fetcher() {
   const [confirmScan, setConfirmScan] = useState(false);
   const [diffs, setDiffs] = useState<ChangeNote[]>([]);
   const [comparedAt, setComparedAt] = useState<number | null>(null);
+  const [pendingRun, setPendingRun] = useState<RunCheckpoint | null>(null);
   const stopRef = useRef<AbortController | null>(null);
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
+
+  useEffect(() => {
+    const saved = readRun();
+    if (saved && saved.done.length < CATALOG.length) setPendingRun(saved);
+  }, []);
 
   const creds = useMemo(() => {
     const list = [{ phone: state.phone.trim(), password: state.password }];
@@ -317,32 +354,7 @@ export function Fetcher() {
     patch({ fallbacks });
   }
 
-  async function checkDomain(domain: string, signal: AbortSignal): Promise<AccountRow> {
-    let last: AccountRow | null = null;
-    for (const cred of creds) {
-      if (signal.aborted) throw new DOMException("Aborted", "AbortError");
-      const row = await fetchOne({
-        data: { domain, phone: cred.phone, password: cred.password },
-        signal,
-      });
-      if (row.ok) {
-        rememberAccount(domain);
-        return row;
-      }
-      last = row;
-      if (row.code !== "invalid_login") return row;
-    }
-    return (
-      last ?? {
-        domain,
-        ok: false,
-        code: "other",
-        message: "No credentials",
-      }
-    );
-  }
-
-  async function run(domains: string[]) {
+  async function run(domains: string[], resumeFrom?: RunCheckpoint) {
     if (!creds.length) {
       setStatus("Enter your phone number and password before fetching.");
       return;
@@ -357,40 +369,95 @@ export function Fetcher() {
     stopRef.current?.abort();
     const controller = new AbortController();
     stopRef.current = controller;
+    const collected: AccountRow[] = resumeFrom ? [...resumeFrom.rows] : [];
+    const done = resumeFrom ? [...resumeFrom.done] : [];
+    const total = resumeFrom ? CATALOG.length : unique.length;
     setRunning(true);
     setShowErrors(false);
     setDiffs([]);
     setComparedAt(null);
-    setRows([]);
-    setProgress({ done: 0, total: unique.length });
-    setStatus(unique.length === 1 ? `Checking ${unique[0]}…` : `Checking ${unique.length} sites…`);
-    const collected: AccountRow[] = [];
+    setRows(collected);
+    setProgress({ done: done.length, total });
+    setStatus(
+      resumeFrom
+        ? `Resuming ${done.length} of ${CATALOG.length}…`
+        : unique.length === 1
+          ? `Checking ${unique[0]}…`
+          : `Checking ${unique.length} sites…`,
+    );
+
+    const publish = (batchRows: AccountRow[]) => {
+      for (const row of batchRows) {
+        if (row.ok) rememberAccount(row.domain);
+        const index = collected.findIndex((item) => item.domain === row.domain);
+        if (index >= 0) collected[index] = row;
+        else collected.push(row);
+        if (!done.includes(row.domain)) done.push(row.domain);
+      }
+      const snapshot = [...collected].sort((a, b) => a.domain.localeCompare(b.domain));
+      setRows(snapshot);
+      setProgress({ done: done.length, total });
+      const checkpoint = { at: Date.now(), done: [...done], rows: snapshot };
+      writeRun(checkpoint);
+      setPendingRun(done.length < CATALOG.length ? checkpoint : null);
+    };
+
+    const batches = chunkDomains(unique);
     let cursor = 0;
     const worker = async () => {
       for (;;) {
         if (controller.signal.aborted) return;
         const index = cursor;
         cursor += 1;
-        if (index >= unique.length) return;
-        const domain = unique[index] ?? "";
+        if (index >= batches.length) return;
+        const batch = batches[index] ?? [];
+        let pending = batch;
+        const settled = new Map<string, AccountRow>();
         try {
-          const row = await checkDomain(domain, controller.signal);
-          collected.push(row);
-        } catch (error) {
-          if (controller.signal.aborted || (error instanceof DOMException && error.name === "AbortError")) {
-            return;
+          for (const cred of creds) {
+            if (controller.signal.aborted || !pending.length) break;
+            const result = await fetchBatch({
+              data: { domains: pending, phone: cred.phone, password: cred.password },
+              signal: controller.signal,
+            });
+            const retry: string[] = [];
+            const returned = new Set(result.map((row) => row.domain));
+            for (const row of result) {
+              if (row.ok || row.code !== "invalid_login") settled.set(row.domain, row);
+              else retry.push(row.domain);
+            }
+            for (const domain of pending) {
+              if (!returned.has(domain)) retry.push(domain);
+            }
+            pending = retry;
           }
-          collected.push({ domain, ok: false, code: "other", message: "Check failed" });
+        } catch (error) {
+          if (controller.signal.aborted || (error instanceof DOMException && error.name === "AbortError")) return;
+          for (const domain of pending) {
+            if (!settled.has(domain)) settled.set(domain, { domain, ok: false, code: "other", message: "Check failed" });
+          }
+          pending = [];
         }
-        setProgress({ done: collected.length, total: unique.length });
-        setRows([...collected].sort((a, b) => a.domain.localeCompare(b.domain)));
+        if (controller.signal.aborted) return;
+        for (const domain of pending) {
+          settled.set(domain, { domain, ok: false, code: "invalid_login", message: "Not your account" });
+        }
+        publish(batch.map((domain) => settled.get(domain) ?? { domain, ok: false, code: "other", message: "Check failed" }));
       }
     };
-    await Promise.all(Array.from({ length: Math.min(4, unique.length) }, () => worker()));
+    await Promise.all(Array.from({ length: Math.min(4, batches.length) }, () => worker()));
     const stopped = controller.signal.aborted;
     const finalRows = [...collected].sort((a, b) => a.domain.localeCompare(b.domain));
     setRows(finalRows);
-    if (!stopped && finalRows.length) saveFetch(finalRows);
+    saveFetch(finalRows);
+    if (!stopped && done.length >= CATALOG.length) {
+      try {
+        localStorage.removeItem(RUN_KEY);
+      } catch {
+        /* ignore */
+      }
+      setPendingRun(null);
+    }
     const notes: ChangeNote[] = [];
     for (const row of finalRows) {
       if (!row.ok) continue;
@@ -549,6 +616,19 @@ export function Fetcher() {
         <button type="button" className="btn btn-ghost" disabled={running} onClick={() => setConfirmScan(true)}>
           Scan the full list to find my accounts
         </button>
+        {pendingRun && !running ? (
+          <button
+            type="button"
+            className="btn"
+            onClick={() => {
+              const done = new Set(pendingRun.done);
+              const remaining = CATALOG.map((site) => site.domain).filter((domain) => !done.has(domain));
+              void run(remaining, pendingRun);
+            }}
+          >
+            Resume scan ({pendingRun.done.length} of {CATALOG.length})
+          </button>
+        ) : null}
         <p className="progress-line">{status}</p>
         {progress.total > 0 ? (
           <div className="bar" aria-hidden="true">

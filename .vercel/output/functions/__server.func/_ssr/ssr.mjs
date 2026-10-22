@@ -103,7 +103,7 @@ var HEADERS = { TSS_SHELL: "X-TSS_SHELL" };
 * the dev styles URL for route-scoped CSS collection.
 */
 async function getStartManifest(matchedRoutes) {
-	const { tsrStartManifest } = await import("../_tanstack-start-manifest_v-BrptPiSX.mjs");
+	const { tsrStartManifest } = await import("../_tanstack-start-manifest_v-BrmanL3R.mjs");
 	const startManifest = tsrStartManifest();
 	let routes = startManifest.routes;
 	routes[rootRouteId];
@@ -125,11 +125,19 @@ async function getStartManifest(matchedRoutes) {
 var manifest = {
 	"31be5b99ae9ca7c2d3b8e9741a2c29430bf663b3f4938f9ae4aa643a22c14f45": {
 		functionName: "fetchCasinoAccount_createServerFn_handler",
-		importer: () => import("./casino.functions-CHqn-ocf.mjs")
+		importer: () => import("./casino.functions-mR7tJOFO.mjs")
+	},
+	"461c07027b2a8c58a6fe2f0a00682e43be45789d096410e713e3e5b3f4767738": {
+		functionName: "fetchCasinoBatchFn_createServerFn_handler",
+		importer: () => import("./casino.functions-mR7tJOFO.mjs")
 	},
 	"74839dc983bbaacaaaed2f59d289f93c284acf8e34a8e5f8f2b0a8b1a890e640": {
 		functionName: "checkSiteStatus_createServerFn_handler",
-		importer: () => import("./casino.functions-CHqn-ocf.mjs")
+		importer: () => import("./casino.functions-mR7tJOFO.mjs")
+	},
+	"bbaccc3e2239274bbee08332c5f8909ed44347b3bf93b9b721830ca8434ad3bf": {
+		functionName: "fetchAllStatusesFn_createServerFn_handler",
+		importer: () => import("./casino.functions-mR7tJOFO.mjs")
 	}
 };
 async function getServerFnById(id, access) {
@@ -1534,7 +1542,7 @@ var getBaseManifest = getProdBaseManifest;
 var createEarlyHintsForRequest = createEarlyHintsCollector;
 async function loadEntries() {
 	const [routerEntry, startEntry, pluginAdapters] = await Promise.all([
-		import("./router-CSjmOi0t.mjs").then((n) => n.t),
+		import("./router-Bnqcnrzc.mjs").then((n) => n.t),
 		import("./start-5Z2QO8AU.mjs"),
 		import("./empty-plugin-adapters-D9UWiqvJ.mjs")
 	]);

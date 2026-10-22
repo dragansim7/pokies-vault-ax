@@ -2,7 +2,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { ArrowUpDown, Bookmark, Eye, Search, Wallet, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CATALOG, type CatalogSite, type SiteGroup } from "@/data/sites";
-import { checkSiteStatus } from "@/lib/casino.functions";
+import { checkSiteStatus, fetchAllStatusesFn } from "@/lib/casino.functions";
 import { formatAdded, money } from "@/lib/format";
 import type { AccountOk, AccountRow, BonusView } from "@/lib/parse-account";
 import { SiteIcon } from "@/components/site-icon";
@@ -26,9 +26,34 @@ const STATUS_LABEL = {
   slow: "Slow",
   redirect: "Redirect",
   dead: "Down",
+  unknown: "Unknown",
 } as const;
 
 type StatusName = keyof typeof STATUS_LABEL;
+
+const STATUS_CACHE_KEY = "vault-statuses";
+const STATUS_CACHE_TTL = 15 * 60 * 1000;
+
+function readStatusCache(): Record<string, StatusName> | null {
+  if (typeof localStorage === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(STATUS_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { at?: number; map?: Record<string, StatusName> };
+    if (!parsed.at || !parsed.map || Date.now() - parsed.at >= STATUS_CACHE_TTL) return null;
+    return parsed.map;
+  } catch {
+    return null;
+  }
+}
+
+function writeStatusCache(map: Record<string, StatusName>) {
+  try {
+    localStorage.setItem(STATUS_CACHE_KEY, JSON.stringify({ at: Date.now(), map }));
+  } catch {
+    /* ignore quota */
+  }
+}
 
 function bonusSortName(mode: BonusMode): string {
   if (mode === "new") return "Signup bonus";
@@ -46,15 +71,15 @@ function bonusOf(row: AccountOk, mode: BonusMode): BonusView | null {
 export function Directory() {
   const { state, patch, markVisited, toggleMine } = useVault();
   const statusFn = useServerFn(checkSiteStatus);
+  const allStatusesFn = useServerFn(fetchAllStatusesFn);
+  const statusFnRef = useRef(statusFn);
+  const allStatusesFnRef = useRef(allStatusesFn);
+  statusFnRef.current = statusFn;
+  allStatusesFnRef.current = allStatusesFn;
   const [query, setQuery] = useState("");
   const [searchReady, setSearchReady] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);
-  const [statuses, setStatuses] = useState<Record<string, StatusName>>({});
-  const seen = useRef(new Set<string>());
-  const queue = useRef<string[]>([]);
-  const running = useRef(0);
-  const statusFnRef = useRef(statusFn);
-  statusFnRef.current = statusFn;
+  const [statuses, setStatuses] = useState<Record<string, StatusName>>(() => readStatusCache() ?? {});
 
   useEffect(() => {
     setSearchReady(true);
@@ -95,68 +120,69 @@ export function Directory() {
   }, [sites, query, state.mineOnly, state.mine, state.notVisited, state.visited, state.sort, state.bonusMode, fetchMap]);
 
   const grouped = state.sort === "default" && !query.trim() && !state.mineOnly && !state.notVisited;
+  const domainKey = sites.map((site) => site.domain).join("\n");
 
   useEffect(() => {
-    const nodes = document.querySelectorAll<HTMLElement>("[data-status-domain]");
-    const pump = () => {
-      while (running.current < 4 && queue.current.length) {
-        const domain = queue.current.shift();
-        if (!domain) break;
-        running.current += 1;
-        void statusFnRef
-          .current({ data: { domain } })
-          .then((result) => {
-            setStatuses((current) => ({ ...current, [domain]: result.status }));
-            try {
-              sessionStorage.setItem(
-                `vault-status:${domain}`,
-                JSON.stringify({ at: Date.now(), status: result.status }),
-              );
-            } catch {
-              /* ignore */
-            }
-          })
-          .catch(() => {
-            setStatuses((current) => ({ ...current, [domain]: "dead" }));
-          })
-          .finally(() => {
-            running.current -= 1;
-            pump();
-          });
-      }
-    };
-    const enqueue = (domain: string) => {
-      if (seen.current.has(domain)) return;
-      seen.current.add(domain);
-      try {
-        const cached = sessionStorage.getItem(`vault-status:${domain}`);
-        if (cached) {
-          const parsed = JSON.parse(cached) as { at: number; status: StatusName };
-          if (Date.now() - parsed.at < 10 * 60 * 1000) {
-            setStatuses((current) => ({ ...current, [domain]: parsed.status }));
-            return;
+    let cancelled = false;
+    const domains = domainKey ? domainKey.split("\n") : [];
+
+    const probeMissing = async (map: Record<string, StatusName>) => {
+      const missing = domains.filter((domain) => !(domain in map));
+      const probe = missing.slice(0, 40);
+      const next = { ...map };
+      for (const domain of missing.slice(40)) next[domain] = "unknown";
+      if (!probe.length || cancelled) return next;
+      if (!cancelled) setStatuses({ ...next });
+      let cursor = 0;
+      const worker = async () => {
+        for (;;) {
+          if (cancelled) return;
+          const index = cursor;
+          cursor += 1;
+          if (index >= probe.length) return;
+          const domain = probe[index] ?? "";
+          try {
+            const result = await statusFnRef.current({ data: { domain } });
+            next[domain] = result.status;
+          } catch {
+            next[domain] = "dead";
           }
+          if (!cancelled) setStatuses({ ...next });
         }
-      } catch {
-        /* ignore */
-      }
-      setStatuses((current) => ({ ...current, [domain]: "checking" }));
-      queue.current.push(domain);
-      pump();
+      };
+      await Promise.all(Array.from({ length: Math.min(4, probe.length) }, () => worker()));
+      return next;
     };
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (!entry.isIntersecting) continue;
-          const domain = (entry.target as HTMLElement).dataset.statusDomain;
-          if (domain) enqueue(domain);
-        }
-      },
-      { rootMargin: "160px" },
-    );
-    nodes.forEach((node) => observer.observe(node));
-    return () => observer.disconnect();
-  }, [filtered, grouped, state.view]);
+
+    const cached = readStatusCache();
+    if (cached) {
+      setStatuses(cached);
+      const missing = domains.filter((domain) => !(domain in cached));
+      if (missing.length) void probeMissing(cached).then((filled) => {
+        if (!cancelled) writeStatusCache(filled);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void (async () => {
+      let map: Record<string, StatusName> = {};
+      try {
+        map = await allStatusesFnRef.current({ data: {} });
+      } catch {
+        map = {};
+      }
+      if (cancelled) return;
+      setStatuses(map);
+      const filled = await probeMissing(map);
+      if (!cancelled) writeStatusCache(filled);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [domainKey]);
 
   function renderCard(site: Listed, compact = false) {
     const row = fetchMap.get(site.domain);
@@ -166,7 +192,6 @@ export function Directory() {
       <article
         key={site.domain}
         className={compact ? "site-card compact" : "site-card"}
-        data-status-domain={site.domain}
       >
         <a
           className="site-hit"
