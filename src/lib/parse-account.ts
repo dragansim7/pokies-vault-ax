@@ -8,6 +8,11 @@ export type BonusView = {
   percent: boolean;
 };
 
+export type PromoBox = {
+  label: string;
+  amount: number;
+};
+
 export type WalletView = {
   id: string;
   name: string;
@@ -29,6 +34,7 @@ export type AccountOk = {
   new: BonusView | null;
   rebate: BonusView | null;
   availableBonuses: BonusView[];
+  promoBoxes: PromoBox[];
 };
 
 export type AccountCode =
@@ -106,6 +112,56 @@ function categoryOf(name: string, custom: string): BonusKey | null {
     return "new";
   }
   return null;
+}
+
+function litAmount(value: unknown): number | null {
+  const amount = num(value);
+  if (amount == null || amount <= 0) return null;
+  return Math.round(amount * 100) / 100;
+}
+
+function promoSection(bonus: Record<string, unknown>): "rebate" | "commission" | "referral" | "other" {
+  const tx = String(bonus.transactionType ?? "").toUpperCase();
+  if (tx === "REBATE") return "rebate";
+  if (tx === "COMMISSION") return "commission";
+  const cfg = parseClaimConfig(bonus.claimConfig);
+  const custom = String(cfg.customBonus ?? "");
+  const name = cleanName(String(bonus.name ?? ""));
+  const key = categoryOf(name, custom);
+  if (key === "rebate") return "rebate";
+  if (!key && /cash ?back/i.test(`${custom} ${name}`)) return "rebate";
+  if (key === "commission") return "commission";
+  if (key === "share" || key === "referral") return "referral";
+  return "other";
+}
+
+function promoBoxesFrom(bonusRaw: unknown[]): PromoBox[] {
+  let rebate = 0;
+  let commission = 0;
+  let referral = 0;
+  const others: PromoBox[] = [];
+  for (const item of bonusRaw) {
+    const bonus = asRecord(item);
+    if (!bonus) continue;
+    const amount = litAmount(bonus.amount);
+    if (amount == null) continue;
+    const section = promoSection(bonus);
+    if (section === "rebate") rebate += amount;
+    else if (section === "commission") commission += amount;
+    else if (section === "referral") referral += amount;
+    else others.push({ label: cleanName(String(bonus.name ?? "")) || "Bonus", amount });
+  }
+  const boxes: PromoBox[] = [];
+  if (rebate > 0) boxes.push({ label: "Rebate", amount: Math.round(rebate * 100) / 100 });
+  if (commission > 0) boxes.push({ label: "Commission", amount: Math.round(commission * 100) / 100 });
+  if (referral > 0) {
+    boxes.push({
+      label: "Referral / Downline Share Bonus",
+      amount: Math.round(referral * 100) / 100,
+    });
+  }
+  boxes.push(...others);
+  return boxes;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -231,14 +287,10 @@ export function parseSyncUser(domain: string, user: unknown): AccountOk {
   const fresh = pick(buckets.new);
   const rebate = pick(buckets.rebate);
 
+  const promoBoxes = promoBoxesFrom(bonusRaw);
+
   const hasData = Boolean(
-    cash > 0.001 ||
-      commission ||
-      share ||
-      referral ||
-      fresh ||
-      rebate ||
-      availableBonuses.length,
+    wallets.some((wallet) => wallet.balance > 0.001) || cash > 0.001 || promoBoxes.length,
   );
 
   return {
@@ -256,6 +308,7 @@ export function parseSyncUser(domain: string, user: unknown): AccountOk {
     new: fresh,
     rebate,
     availableBonuses,
+    promoBoxes,
   };
 }
 

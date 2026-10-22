@@ -24,16 +24,22 @@ export const Route = createRootRoute({
       { rel: "apple-touch-icon", href: "/__grok/icon-180.png" },
       {
         rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap",
+        href: "https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Sora:wght@400;500;600;700&display=swap",
       },
     ],
   }),
   component: () => (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" data-theme="vault" suppressHydrationWarning>
       <head>
         <HeadContent />
       </head>
       <body>
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              'try{var t=JSON.parse(localStorage.getItem("pokies_vault_v1")||"null");if(t&&typeof t.theme==="string")document.documentElement.dataset.theme=t.theme}catch(e){}',
+          }}
+        />
         <PreviewHostBridge />
         <AuthProvider>
           <VaultProvider>

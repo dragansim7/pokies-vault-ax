@@ -3,9 +3,11 @@ import { ArrowUpDown, Bookmark, Eye, Search, Wallet, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CATALOG, type CatalogSite, type SiteGroup } from "@/data/sites";
 import { checkSiteStatus } from "@/lib/casino.functions";
-import { formatAdded, initials, money } from "@/lib/format";
+import { formatAdded, money } from "@/lib/format";
 import type { AccountOk, AccountRow, BonusView } from "@/lib/parse-account";
+import { SiteIcon } from "@/components/site-icon";
 import { useVault, type BonusMode, type SortMode } from "@/components/vault";
+import { compareSites, chosenBonus } from "@/lib/order";
 
 type Listed = CatalogSite | { domain: string; group: SiteGroup; addedAt: string };
 
@@ -28,15 +30,17 @@ const STATUS_LABEL = {
 
 type StatusName = keyof typeof STATUS_LABEL;
 
-function bonusOf(row: AccountOk, mode: BonusMode): BonusView | null {
-  if (mode === "none") return null;
-  return row[mode];
+function bonusSortName(mode: BonusMode): string {
+  if (mode === "new") return "Signup bonus";
+  if (mode === "commission") return "Commission";
+  if (mode === "referral") return "Referral";
+  if (mode === "rebate") return "Rebate";
+  return "Share";
 }
 
-function SiteIcon({ domain }: { domain: string }) {
-  const tones = ["tone-cyan", "tone-violet", "tone-pink", "tone-live"] as const;
-  const tone = tones[domain.charCodeAt(0) % tones.length] ?? "tone-cyan";
-  return <span className={`site-fallback ${tone}`}>{initials(domain)}</span>;
+function bonusOf(row: AccountOk, mode: BonusMode): BonusView | null {
+  if (mode === "none") return null;
+  return chosenBonus(row, mode);
 }
 
 export function Directory() {
@@ -81,20 +85,14 @@ export function Directory() {
       if (q && !site.domain.includes(q)) return false;
       return true;
     });
-    const cashOf = (domain: string) => {
-      const row = fetchMap.get(domain);
-      return row?.ok ? row.cash : -1;
-    };
-    if (state.sort === "az") list = [...list].sort((a, b) => a.domain.localeCompare(b.domain));
-    if (state.sort === "za") list = [...list].sort((a, b) => b.domain.localeCompare(a.domain));
-    if (state.sort === "new") {
-      list = [...list].sort((a, b) => String(b.addedAt).localeCompare(String(a.addedAt)));
-    }
-    if (state.sort === "balance") {
-      list = [...list].sort((a, b) => cashOf(b.domain) - cashOf(a.domain) || a.domain.localeCompare(b.domain));
-    }
-    return list;
-  }, [sites, query, state.mineOnly, state.mine, state.notVisited, state.visited, state.sort, fetchMap]);
+    const sorted =
+      state.sort === "default"
+        ? list
+        : [...list].sort((a, b) =>
+            compareSites(a, b, fetchMap.get(a.domain), fetchMap.get(b.domain), state.sort, state.bonusMode),
+          );
+    return sorted;
+  }, [sites, query, state.mineOnly, state.mine, state.notVisited, state.visited, state.sort, state.bonusMode, fetchMap]);
 
   const grouped = state.sort === "default" && !query.trim() && !state.mineOnly && !state.notVisited;
 
@@ -340,13 +338,23 @@ export function Directory() {
                 <X size={18} />
               </button>
             </div>
+            <h3>Sort by</h3>
+            <p className="hint">Same order for the homepage cards and the bonus fetcher results.</p>
             {(
               [
-                ["default", "Featured groups"],
-                ["az", "Domain A–Z"],
-                ["za", "Domain Z–A"],
-                ["new", "Newest added"],
-                ["balance", "Wallet balance"],
+                ["default", "Default order"],
+                ["az", "Domain name — A → Z"],
+                ["za", "Domain name — Z → A"],
+                ["balance", "Highest balance"],
+                ["turnover", "Best turnover"],
+                ["cashout", "Lowest cash-out"],
+                ["errors", "Errors"],
+                ["popular", "Most popular"],
+                ["norefer", "Accounts without referlinks"],
+                ["shareAmount", `${bonusSortName(state.bonusMode)} — biggest amount`],
+                ["shareMax", `${bonusSortName(state.bonusMode)} — highest max`],
+                ["shareTurn", `${bonusSortName(state.bonusMode)} — lowest turnover`],
+                ["new", "Newest"],
               ] as const
             ).map(([id, label]) => (
               <button
@@ -355,26 +363,32 @@ export function Directory() {
                 className={state.sort === id ? "choice on" : "choice"}
                 onClick={() => patch({ sort: id as SortMode })}
               >
+                <i className="radio" />
                 {label}
               </button>
             ))}
-            <h3 className="section-label">Show on cards</h3>
+            <h3 className="section-label">Bonus display</h3>
+            <p className="hint">
+              Highlights that bonus on every card. The three “chosen bonus” sorts above use it.
+            </p>
             {(
               [
-                ["none", "Nothing extra"],
-                ["new", "Welcome"],
-                ["share", "Share"],
-                ["commission", "Commission"],
-                ["referral", "Referral"],
-                ["rebate", "Rebate"],
+                ["none", "None", ""],
+                ["new", "Signup bonus", "🎁"],
+                ["share", "Share bonus", "🤝"],
+                ["commission", "Commission", "💸"],
+                ["referral", "Referral bonus", "👥"],
+                ["rebate", "Rebate bonus", "♻️"],
               ] as const
-            ).map(([id, label]) => (
+            ).map(([id, label, emoji]) => (
               <button
                 key={id}
                 type="button"
                 className={state.bonusMode === id ? "choice on" : "choice"}
                 onClick={() => patch({ bonusMode: id })}
               >
+                <i className="radio" />
+                {emoji ? <span aria-hidden="true">{emoji}</span> : null}
                 {label}
               </button>
             ))}

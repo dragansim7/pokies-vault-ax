@@ -1,12 +1,14 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Menu, Plus, Shield, Trash2, UserRound, X, Zap } from "lucide-react";
+import { Menu, Palette, Plus, Shield, Trash2, UserRound, X, Zap } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { useVault } from "@/components/vault";
+import { THEMES, type ThemeId } from "@/lib/themes";
 
 export function AppFrame({ children }: { children: ReactNode }) {
   const path = useRouterState({ select: (state) => state.location.pathname });
   const { state, addDomain, clearAll, patch } = useVault();
   const [menu, setMenu] = useState(false);
+  const [tab, setTab] = useState<"list" | "theme">("list");
   const [adding, setAdding] = useState(false);
   const [domain, setDomain] = useState("");
   const [error, setError] = useState("");
@@ -72,13 +74,56 @@ export function AppFrame({ children }: { children: ReactNode }) {
           <aside className="drawer" onClick={(event) => event.stopPropagation()}>
             <div className="header-row">
               <div>
-                <h2>Menu</h2>
+                <h2>Settings</h2>
                 <p>Your list only. No credits, no rentals.</p>
               </div>
               <button type="button" className="pin" aria-label="Close menu" onClick={() => setMenu(false)}>
                 <X size={18} />
               </button>
             </div>
+            <div className="drawer-tabs" role="tablist">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tab === "list"}
+                className={tab === "list" ? "drawer-tab on" : "drawer-tab"}
+                onClick={() => setTab("list")}
+              >
+                List
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tab === "theme"}
+                className={tab === "theme" ? "drawer-tab on" : "drawer-tab"}
+                onClick={() => setTab("theme")}
+              >
+                <Palette size={14} />
+                Theme
+              </button>
+            </div>
+            {tab === "theme" ? (
+              <div className="theme-list">
+                {THEMES.map((theme) => (
+                  <button
+                    key={theme.id}
+                    type="button"
+                    className={state.theme === theme.id ? "theme-card on" : "theme-card"}
+                    onClick={() => patch({ theme: theme.id as ThemeId })}
+                  >
+                    <span
+                      className="theme-swatch"
+                      style={{ background: `linear-gradient(135deg, ${theme.a}, ${theme.b} 46%, ${theme.c})` }}
+                    />
+                    <span>
+                      <strong>{theme.name}</strong>
+                      <small>{theme.hint}</small>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <>
             <button
               type="button"
               className="drawer-item"
@@ -137,6 +182,8 @@ export function AppFrame({ children }: { children: ReactNode }) {
                 <small>Removes local vault data</small>
               </span>
             </button>
+              </>
+            )}
           </aside>
         </div>
       ) : null}

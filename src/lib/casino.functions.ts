@@ -20,3 +20,10 @@ export const checkSiteStatus = createServerFn({ method: "POST" })
     const { checkSiteStatus: run } = await import("@/lib/casino.impl.server");
     return run(data.domain);
   });
+
+export const resolveSiteIcon = createServerFn({ method: "POST" })
+  .validator((data: { domain: string }) => data)
+  .handler(async ({ data }): Promise<{ domain: string; icon: string }> => {
+    const { resolveSiteIcon: run } = await import("@/lib/casino.impl.server");
+    return run(data.domain);
+  });

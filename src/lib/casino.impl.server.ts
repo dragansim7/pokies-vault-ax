@@ -191,3 +191,47 @@ export async function checkSiteStatus(rawDomain: string): Promise<{
     return { domain, status: "dead", ms: Date.now() - started };
   }
 }
+
+function iconFromHtml(html: string, base: string): string | null {
+  const tags = html.match(/<link\b[^>]*>/gi) ?? [];
+  let icon: string | null = null;
+  let apple: string | null = null;
+  for (const tag of tags) {
+    const rel = (/rel=["']([^"']+)["']/i.exec(tag)?.[1] ?? "").toLowerCase();
+    const href = /href=["']([^"']+)["']/i.exec(tag)?.[1];
+    if (!href) continue;
+    const parts = rel.split(/\s+/);
+    if (parts.includes("icon") || rel.includes("shortcut")) icon = href;
+    else if (rel.includes("apple-touch-icon") && !apple) apple = href;
+  }
+  const picked = icon || apple;
+  if (!picked) return null;
+  try {
+    const url = new URL(picked, base);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+    const host = normalizeDomain(url.hostname);
+    if (!isPublicDomain(host)) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+export async function resolveSiteIcon(rawDomain: string): Promise<{ domain: string; icon: string }> {
+  const domain = normalizeDomain(rawDomain);
+  if (!isPublicDomain(domain)) return { domain, icon: "" };
+  const fallback = `https://${domain}/favicon.ico`;
+  try {
+    const home = await fetch(`https://${domain}/`, {
+      redirect: "follow",
+      signal: AbortSignal.timeout(8_000),
+      headers: { accept: "text/html", "user-agent": UA },
+    });
+    const finalHost = normalizeDomain(new URL(home.url).hostname);
+    const base = isPublicDomain(finalHost) ? home.url : `https://${domain}/`;
+    const html = (await home.text()).slice(0, 200_000);
+    return { domain, icon: iconFromHtml(html, base) || (isPublicDomain(finalHost) ? `https://${finalHost}/favicon.ico` : fallback) };
+  } catch {
+    return { domain, icon: fallback };
+  }
+}

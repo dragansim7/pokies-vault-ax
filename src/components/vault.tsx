@@ -9,14 +9,31 @@ import {
 } from "react";
 import type { AccountRow } from "@/lib/parse-account";
 import { isPublicDomain, normalizeDomain } from "@/lib/domain";
+import { isThemeId, themeById, type ThemeId } from "@/lib/themes";
+import { isSortMode } from "@/lib/order";
 
 const KEY = "pokies_vault_v1";
 
 export type ViewMode = "default" | "one" | "two";
-export type SortMode = "default" | "az" | "za" | "new" | "balance";
+export type SortMode =
+  | "default"
+  | "az"
+  | "za"
+  | "balance"
+  | "turnover"
+  | "cashout"
+  | "errors"
+  | "popular"
+  | "norefer"
+  | "shareAmount"
+  | "shareMax"
+  | "shareTurn"
+  | "new";
 export type BonusMode = "none" | "new" | "share" | "commission" | "referral" | "rebate";
 
 export type FallbackCred = { phone: string; password: string };
+
+export type AttentionMark = { domain: string; code: string };
 
 export type LastFetch = {
   at: number;
@@ -31,12 +48,14 @@ export type VaultState = {
   password: string;
   fallbacks: FallbackCred[];
   lastFetch: LastFetch | null;
+  attentionChecked: AttentionMark[];
   view: ViewMode;
   notVisited: boolean;
   wallets: boolean;
   mineOnly: boolean;
   sort: SortMode;
   bonusMode: BonusMode;
+  theme: ThemeId;
 };
 
 const EMPTY: VaultState = {
@@ -51,12 +70,14 @@ const EMPTY: VaultState = {
     { phone: "", password: "" },
   ],
   lastFetch: null,
+  attentionChecked: [],
   view: "default",
   notVisited: false,
   wallets: false,
   mineOnly: false,
   sort: "default",
   bonusMode: "none",
+  theme: "vault",
 };
 
 function load(): VaultState {
@@ -74,6 +95,18 @@ function load(): VaultState {
         Array.isArray(parsed.fallbacks) && parsed.fallbacks.length === 3
           ? parsed.fallbacks
           : EMPTY.fallbacks,
+      sort: isSortMode(parsed.sort) ? parsed.sort : EMPTY.sort,
+      bonusMode: parsed.bonusMode ?? EMPTY.bonusMode,
+      theme: isThemeId(parsed.theme) ? parsed.theme : EMPTY.theme,
+      attentionChecked: Array.isArray(parsed.attentionChecked)
+        ? parsed.attentionChecked.filter(
+            (item): item is AttentionMark =>
+              !!item &&
+              typeof item === "object" &&
+              typeof (item as AttentionMark).domain === "string" &&
+              typeof (item as AttentionMark).code === "string",
+          )
+        : [],
     };
   } catch {
     return EMPTY;
@@ -103,6 +136,12 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     setState(load());
     setReady(true);
   }, []);
+
+  useEffect(() => {
+    const theme = themeById(state.theme);
+    document.documentElement.dataset.theme = theme.id;
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme.bg);
+  }, [state.theme]);
 
   const persist = useCallback((next: VaultState) => {
     setState(next);

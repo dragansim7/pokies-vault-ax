@@ -3,72 +3,147 @@ import { useServerFn } from "@tanstack/react-start";
 import { ChevronLeft, Eye, EyeOff, Loader2 } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { CATALOG } from "@/data/sites";
-import { useVault, type FallbackCred } from "@/components/vault";
+import { useVault, type AttentionMark, type BonusMode, type FallbackCred } from "@/components/vault";
+import { SiteIcon } from "@/components/site-icon";
 import { fetchCasinoAccount } from "@/lib/casino.functions";
 import { isPublicDomain, normalizeDomain } from "@/lib/domain";
-import { money } from "@/lib/format";
-import type { AccountOk, AccountRow, BonusView } from "@/lib/parse-account";
+import { money, formatAdded } from "@/lib/format";
+import { catalogMeta, chosenBonus, compareSites } from "@/lib/order";
+import type { AccountCode, AccountErr, AccountOk, AccountRow, BonusView } from "@/lib/parse-account";
 
 const PAGE = 12;
 
-function bonusCell(label: string, bonus: BonusView | null) {
-  return (
-    <div className="bonus-cell">
-      <b>{label}</b>
-      {bonus ? (
-        <em className="yes">
-          Yes <span>({bonus.amountDisplay})</span>
-        </em>
-      ) : (
-        <em className="no">No</em>
-      )}
-    </div>
-  );
+const TONES = ["tone-0", "tone-1", "tone-2", "tone-3", "tone-4"] as const;
+
+type MoneyBox = { label: string; amount: number; kind: "wallet" | "promo" };
+
+type ChangeNote = {
+  id: string;
+  domain: string;
+  label: string;
+  from: number | null;
+  to: number | null;
+};
+
+function cents(amount: number): number {
+  return Math.round(amount * 100) / 100;
 }
 
-function ResultCard({ row }: { row: AccountOk }) {
+function boxesOf(row: AccountOk): MoneyBox[] {
+  const wallets = row.wallets.filter((wallet) => wallet.balance > 0.001);
+  const walletBoxes: MoneyBox[] = wallets.length
+    ? wallets.map((wallet) => ({ label: wallet.name, amount: wallet.balance, kind: "wallet" }))
+    : row.cash > 0.001
+      ? [{ label: row.cashWalletName, amount: row.cash, kind: "wallet" }]
+      : [];
+  const promos: MoneyBox[] = (row.promoBoxes ?? [])
+    .filter((box) => box.amount > 0.001)
+    .map((box) => ({ label: box.label, amount: box.amount, kind: "promo" }));
+  return [...walletBoxes, ...promos];
+}
+
+function totalsOf(row: AccountOk): { wallets: number; claimable: number; total: number } {
+  let wallets = 0;
+  let claimable = 0;
+  for (const box of boxesOf(row)) {
+    if (box.kind === "wallet") wallets += box.amount;
+    else claimable += box.amount;
+  }
+  wallets = cents(wallets);
+  claimable = cents(claimable);
+  return { wallets, claimable, total: cents(wallets + claimable) };
+}
+
+function boxMap(row: AccountOk): Map<string, MoneyBox> {
+  const map = new Map<string, MoneyBox>();
+  for (const box of boxesOf(row)) {
+    const key = `${box.kind}\0${box.label}`;
+    const current = map.get(key);
+    if (current) current.amount = cents(current.amount + box.amount);
+    else map.set(key, { ...box, amount: cents(box.amount) });
+  }
+  return map;
+}
+
+function changesFor(before: AccountOk | undefined, after: AccountOk): ChangeNote[] {
+  if (!before?.ok) {
+    const total = totalsOf(after).total;
+    if (total <= 0) return [];
+    return [{ id: `${after.domain}:new`, domain: after.domain, label: "Now showing", from: null, to: total }];
+  }
+  const prev = boxMap(before);
+  const next = boxMap(after);
+  const notes: ChangeNote[] = [];
+  const keys = new Set([...prev.keys(), ...next.keys()]);
+  for (const key of keys) {
+    const oldBox = prev.get(key);
+    const newBox = next.get(key);
+    const from = oldBox?.amount ?? null;
+    const to = newBox?.amount ?? null;
+    if (from != null && to != null && Math.abs(from - to) < 0.01) continue;
+    if (from == null && to == null) continue;
+    const label = newBox?.label ?? oldBox?.label ?? "Balance";
+    notes.push({ id: `${after.domain}:${key}`, domain: after.domain, label, from, to });
+  }
+  notes.sort((a, b) => Math.abs((b.to ?? 0) - (b.from ?? 0)) - Math.abs((a.to ?? 0) - (a.from ?? 0)));
+  return notes;
+}
+
+function deltaText(note: ChangeNote): string {
+  if (note.from == null && note.to != null) {
+    return note.label === "Now showing" ? money(note.to) : `New ${money(note.to)}`;
+  }
+  if (note.to == null) return `${money(note.from)} → ${money(0)}`;
+  return `${money(note.from)} → ${money(note.to)}`;
+}
+
+function deltaClass(note: ChangeNote): string {
+  const from = note.from ?? 0;
+  const to = note.to ?? 0;
+  if (to > from + 0.009) return "delta up";
+  if (to < from - 0.009) return "delta down";
+  return "delta";
+}
+
+function ResultCard({ row, bonus }: { row: AccountOk; bonus: BonusView | null }) {
+  const boxes = boxesOf(row);
+  const total = totalsOf(row).total;
   return (
     <article className="result-card">
       <div className="result-head">
-        <strong>{row.domain}</strong>
-        <a href={`https://${row.domain}/`} target="_blank" rel="noreferrer">
-          Open
-        </a>
+        <span className="result-title">
+          <SiteIcon domain={row.domain} />
+          <strong>{row.domain}</strong>
+        </span>
+        <span className="result-side">
+          {total > 0 ? <b>{money(total)}</b> : null}
+          <a href={`https://${row.domain}/`} target="_blank" rel="noreferrer">
+            Open
+          </a>
+        </span>
       </div>
-      <p className="cash">
-        {money(row.cash)}
-        <small>
-          {row.cashWalletName}
-          {row.cashMinWithdrawal != null ? ` · Min ${money(row.cashMinWithdrawal)}` : ""}
-          {row.cashMaxWithdrawal != null ? ` · Max ${money(row.cashMaxWithdrawal)}` : " · No max shown"}
-        </small>
-      </p>
-      <div className="bonus-grid">
-        {bonusCell("Commission", row.commission)}
-        {bonusCell("Share", row.share)}
-        {bonusCell("Referral", row.referral)}
-        {bonusCell("Welcome", row.new)}
-        {bonusCell("Rebate", row.rebate)}
-      </div>
-      {row.availableBonuses.length ? (
-        <details className="bonus-list">
-          <summary>All bonuses on this account ({row.availableBonuses.length})</summary>
-          {row.availableBonuses.map((bonus) => (
-            <div className="bonus-row" key={`${bonus.name}-${bonus.amountDisplay}`}>
-              <span>
-                {bonus.name}
-                {bonus.rollover ? ` · ${bonus.rollover}×` : ""}
-              </span>
-              <span>{bonus.amountDisplay}</span>
+      {bonus ? (
+        <p className="hint">
+          {bonus.name} {bonus.amountDisplay}
+        </p>
+      ) : null}
+      {boxes.length ? (
+        <div className="promo-stack">
+          {boxes.map((box, index) => (
+            <div className={`promo-box ${TONES[index % TONES.length]}`} key={`${box.kind}-${box.label}-${index}`}>
+              <span>{box.label}</span>
+              <b>{money(box.amount)}</b>
             </div>
           ))}
-        </details>
-      ) : null}
+        </div>
+      ) : (
+        <p className="hint">No balance or claimable promo.</p>
+      )}
     </article>
   );
 }
 
-function PageList({ rows }: { rows: AccountOk[] }) {
+function PageList({ rows, bonusMode }: { rows: AccountOk[]; bonusMode: BonusMode }) {
   const [page, setPage] = useState(0);
   const pages = Math.max(1, Math.ceil(rows.length / PAGE));
   const safe = Math.min(page, pages - 1);
@@ -95,10 +170,108 @@ function PageList({ rows }: { rows: AccountOk[] }) {
       ) : null}
       <div className="stack">
         {slice.map((row) => (
-          <ResultCard key={row.domain} row={row} />
+          <ResultCard
+            key={row.domain}
+            row={row}
+            bonus={bonusMode === "none" ? null : chosenBonus(row, bonusMode)}
+          />
         ))}
       </div>
     </>
+  );
+}
+
+const CODE_ORDER: AccountCode[] = [
+  "captcha",
+  "invalid_login",
+  "timeout",
+  "unreachable",
+  "unsupported",
+  "other",
+];
+
+function isMarked(marks: AttentionMark[], domain: string, code: string): boolean {
+  return marks.some((mark) => mark.domain === domain && mark.code === code);
+}
+
+function NeedsAttention({
+  savedAt,
+  rows,
+  marks,
+  onToggle,
+}: {
+  savedAt: number | null;
+  rows: AccountErr[];
+  marks: AttentionMark[];
+  onToggle: (domain: string, code: string) => void;
+}) {
+  const [showChecked, setShowChecked] = useState(false);
+  const stamp = savedAt ? formatAdded(new Date(savedAt).toISOString()) : "";
+  const counts = CODE_ORDER.map((code) => ({
+    code,
+    count: rows.filter((row) => row.code === code).length,
+  })).filter((item) => item.count > 0);
+  const hidden = rows.filter((row) => isMarked(marks, row.domain, row.code)).length;
+  const visible = showChecked ? rows : rows.filter((row) => !isMarked(marks, row.domain, row.code));
+  const groups = counts
+    .map((item) => ({
+      ...item,
+      rows: visible.filter((row) => row.code === item.code),
+    }))
+    .filter((group) => group.rows.length > 0);
+
+  return (
+    <section className="panel attention">
+      <h2 className="section-label">Needs attention · {rows.length}</h2>
+      <p className="hint">Rejected sites are saved with the fetch. A checked row stays hidden until that site comes back with a different code.</p>
+      {counts.length ? (
+        <p className="attention-counts">
+          {counts.map((item) => (
+            <span key={item.code}>
+              {item.code} <b>{item.count}</b>
+            </span>
+          ))}
+        </p>
+      ) : (
+        <p className="hint">No rejected sites saved yet.</p>
+      )}
+      {hidden > 0 ? (
+        <button type="button" className="btn" onClick={() => setShowChecked((value) => !value)}>
+          {showChecked ? "Hide checked" : `Show checked (${hidden})`}
+        </button>
+      ) : null}
+      {groups.map((group) => (
+        <div className="attention-group" key={group.code}>
+          <h3>
+            {group.code} · {group.rows.length}
+          </h3>
+          <div className="attention-table">
+            {group.rows.map((row) => {
+              const checked = isMarked(marks, row.domain, row.code);
+              return (
+                <div className="attention-row" key={`${row.domain}-${row.code}`}>
+                  <label className="attention-check">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => onToggle(row.domain, row.code)}
+                    />
+                    <span className="sr">Checked</span>
+                  </label>
+                  <strong className="attention-domain">{row.domain}</strong>
+                  <span className="attention-code">{row.code}</span>
+                  <span className="attention-message">{row.message}</span>
+                  <time dateTime={savedAt ? new Date(savedAt).toISOString() : undefined}>{stamp}</time>
+                  <a href={`https://${row.domain}/`} target="_blank" rel="noreferrer">
+                    Open
+                  </a>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </section>
   );
 }
 
@@ -114,7 +287,8 @@ export function Fetcher() {
   const [rows, setRows] = useState<AccountRow[]>(state.lastFetch?.rows ?? []);
   const [showErrors, setShowErrors] = useState(false);
   const [confirmScan, setConfirmScan] = useState(false);
-  const [diffs, setDiffs] = useState<string[]>([]);
+  const [diffs, setDiffs] = useState<ChangeNote[]>([]);
+  const [comparedAt, setComparedAt] = useState<number | null>(null);
   const stopRef = useRef<AbortController | null>(null);
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
@@ -130,7 +304,13 @@ export function Fetcher() {
   const valid = rows.filter((row): row is AccountOk => row.ok && row.hasData);
   const empty = rows.filter((row): row is AccountOk => row.ok && !row.hasData);
   const errors = rows.filter((row) => !row.ok);
-  const totalCash = valid.reduce((sum, row) => sum + row.cash, 0);
+  const orderOf = (a: AccountOk, b: AccountOk) =>
+    compareSites(catalogMeta(a.domain), catalogMeta(b.domain), a, b, state.sort, state.bonusMode);
+  const ranked = [...valid].sort(orderOf);
+  const quiet = [...empty].sort(orderOf);
+  const walletTotal = cents(ranked.reduce((sum, row) => sum + totalsOf(row).wallets, 0));
+  const claimableTotal = cents(ranked.reduce((sum, row) => sum + totalsOf(row).claimable, 0));
+  const waiting = cents(walletTotal + claimableTotal);
 
   function setFallback(index: number, partial: Partial<FallbackCred>) {
     const fallbacks = state.fallbacks.map((item, i) => (i === index ? { ...item, ...partial } : item));
@@ -172,6 +352,7 @@ export function Fetcher() {
       setStatus("No sites to check. Save accounts from the list, add a domain, or scan.");
       return;
     }
+    const previousAt = state.lastFetch?.at ?? null;
     const previous = new Map((state.lastFetch?.rows ?? []).filter((row) => row.ok).map((row) => [row.domain, row]));
     stopRef.current?.abort();
     const controller = new AbortController();
@@ -179,6 +360,7 @@ export function Fetcher() {
     setRunning(true);
     setShowErrors(false);
     setDiffs([]);
+    setComparedAt(null);
     setRows([]);
     setProgress({ done: 0, total: unique.length });
     setStatus(unique.length === 1 ? `Checking ${unique[0]}…` : `Checking ${unique.length} sites…`);
@@ -209,15 +391,18 @@ export function Fetcher() {
     const finalRows = [...collected].sort((a, b) => a.domain.localeCompare(b.domain));
     setRows(finalRows);
     if (!stopped && finalRows.length) saveFetch(finalRows);
-    const notes: string[] = [];
+    const notes: ChangeNote[] = [];
     for (const row of finalRows) {
       if (!row.ok) continue;
-      const before = previous.get(row.domain);
-      if (before?.ok && Math.abs(before.cash - row.cash) >= 0.01) {
-        notes.push(`${row.domain} balance ${money(before.cash)} → ${money(row.cash)}`);
-      }
+      notes.push(...changesFor(previous.get(row.domain), row));
     }
+    notes.sort(
+      (a, b) =>
+        Math.abs((b.to ?? 0) - (b.from ?? 0)) - Math.abs((a.to ?? 0) - (a.from ?? 0)) ||
+        a.domain.localeCompare(b.domain),
+    );
     setDiffs(notes);
+    setComparedAt(previousAt);
     const signedIn = finalRows.filter((row) => row.ok).length;
     setStatus(
       stopped
@@ -327,6 +512,8 @@ export function Fetcher() {
             disabled={running || !state.lastFetch}
             onClick={() => {
               setRows(state.lastFetch?.rows ?? []);
+              setDiffs([]);
+              setComparedAt(null);
               setStatus("Showing the last fetch saved on this device.");
             }}
           >
@@ -370,27 +557,47 @@ export function Fetcher() {
         ) : null}
       </div>
 
-      {diffs.length ? (
+      {comparedAt != null ? (
         <div className="panel">
-          <strong>Changes since the previous fetch</strong>
-          <ul className="diff">
-            {diffs.map((note) => (
-              <li key={note}>{note}</li>
-            ))}
-          </ul>
+          <strong>Changes since {formatAdded(new Date(comparedAt).toISOString())}</strong>
+          {diffs.length ? (
+            <ul className="diff">
+              {diffs.map((note) => (
+                <li key={note.id}>
+                  <span className="diff-copy">
+                    <strong>{note.domain}</strong>
+                    <span>{note.label}</span>
+                  </span>
+                  <span className={deltaClass(note)}>{deltaText(note)}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="hint">No change in wallets or claimable bonuses.</p>
+          )}
         </div>
       ) : null}
 
-      <div>
-        <h2 className="section-label">
-          Your accounts · {valid.length}
-          {valid.length ? ` · ${money(totalCash)} cash` : ""}
-        </h2>
-        {valid.length ? <PageList rows={valid} /> : <p className="hint">Nothing with a balance or bonus yet.</p>}
+      <div className="result-summary">
+        <h2 className="section-label">Your accounts · {ranked.length}</h2>
+        {ranked.length ? (
+          <>
+            <p className="waiting">
+              {money(waiting)} <span>waiting</span>
+            </p>
+            <p className="hint waiting-split">
+              Wallets {money(walletTotal)} + claimable {money(claimableTotal)}
+            </p>
+          </>
+        ) : null}
+        {state.lastFetch && !running ? (
+          <p className="hint waiting-split">Saved {formatAdded(new Date(state.lastFetch.at).toISOString())}</p>
+        ) : null}
+        {ranked.length ? <PageList rows={ranked} bonusMode={state.bonusMode} /> : <p className="hint">Nothing with a balance or bonus yet.</p>}
       </div>
       <div>
         <h2 className="section-label">Signed in, nothing waiting · {empty.length}</h2>
-        {empty.length ? <PageList rows={empty} /> : <p className="hint">None.</p>}
+        {quiet.length ? <PageList rows={quiet} bonusMode={state.bonusMode} /> : <p className="hint">None.</p>}
       </div>
       <div>
         <h2 className="section-label">Not your account or unreachable · {errors.length}</h2>
@@ -402,18 +609,36 @@ export function Fetcher() {
             {showErrors ? (
               <div className="stack" style={{ marginTop: 8 }}>
                 {errors.map((row) => (
-                  <div className="result-card" key={row.domain}>
-                    <strong>{row.domain}</strong>
-                    <p className="hint">{row.message}</p>
+                  <div className="result-card error-row" key={row.domain}>
+                    <SiteIcon domain={row.domain} />
+                    <div>
+                      <strong>{row.domain}</strong>
+                      <p className="hint">{row.message}</p>
+                    </div>
                   </div>
                 ))}
               </div>
             ) : null}
           </>
         ) : (
-          <p className="hint">Rejected sites are not saved.</p>
+          <p className="hint">None this fetch. Rejected sites stay saved under Needs attention.</p>
         )}
       </div>
+
+      <NeedsAttention
+        savedAt={state.lastFetch?.at ?? null}
+        rows={(state.lastFetch?.rows ?? []).filter((row): row is AccountErr => !row.ok)}
+        marks={state.attentionChecked}
+        onToggle={(domain, code) => {
+          const marks = state.attentionChecked;
+          const exists = marks.some((mark) => mark.domain === domain && mark.code === code);
+          patch({
+            attentionChecked: exists
+              ? marks.filter((mark) => !(mark.domain === domain && mark.code === code))
+              : [...marks, { domain, code }],
+          });
+        }}
+      />
 
       {confirmScan ? (
         <div className="modal-backdrop" onClick={() => setConfirmScan(false)}>
