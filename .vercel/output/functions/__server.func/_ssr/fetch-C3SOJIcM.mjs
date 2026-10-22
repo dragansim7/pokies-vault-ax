@@ -2,9 +2,9 @@ import { i as __toESM } from "../_runtime.mjs";
 import { S as require_jsx_runtime, Y as require_react, b as Link } from "../_libs/@tanstack/react-router+[...].mjs";
 import { n as normalizeDomain, t as isPublicDomain } from "./domain-CILCWuBu.mjs";
 import { f as LoaderCircle, h as ChevronLeft, m as EyeOff, p as Eye } from "../_libs/lucide-react.mjs";
-import { a as compareSites, i as chosenBonus, n as useVault, o as CATALOG, r as catalogMeta } from "./router-Bnqcnrzc.mjs";
-import { a as fetchCasinoBatchFn, c as useServerFn, n as SiteIcon, o as formatAdded, s as money, t as AppFrame } from "./format-SzEQ0MdY.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/fetch-B7AkO5rx.js
+import { a as compareSites, i as chosenBonus, n as useVault, o as CATALOG, r as catalogMeta } from "./router-CY5l7gOj.mjs";
+import { a as fetchCasinoBatchFn, c as useServerFn, n as SiteIcon, o as formatAdded, s as money, t as AppFrame } from "./format-CRHN_JTI.mjs";
+//#region node_modules/.nitro/vite/services/ssr/assets/fetch-C3SOJIcM.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 var PAGE = 12;

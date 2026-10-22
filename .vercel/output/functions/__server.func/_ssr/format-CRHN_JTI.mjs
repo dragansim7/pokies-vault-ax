@@ -2,8 +2,8 @@ import { i as __toESM } from "../_runtime.mjs";
 import { G as isRedirect, S as require_jsx_runtime, Y as require_react, b as Link, p as useRouterState, x as useRouter } from "../_libs/@tanstack/react-router+[...].mjs";
 import { n as TSS_SERVER_FUNCTION, r as getServerFnById, t as createServerFn } from "./ssr.mjs";
 import { d as Menu, i as UserRound, l as Plus, n as X, o as Trash2, s as Shield, t as Zap, u as Palette } from "../_libs/lucide-react.mjs";
-import { n as useVault, s as THEMES } from "./router-Bnqcnrzc.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/format-SzEQ0MdY.js
+import { n as useVault, s as THEMES } from "./router-CY5l7gOj.mjs";
+//#region node_modules/.nitro/vite/services/ssr/assets/format-CRHN_JTI.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 function useServerFn(serverFn) {

@@ -1,9 +1,9 @@
 import { i as __toESM } from "../_runtime.mjs";
 import { S as require_jsx_runtime, Y as require_react } from "../_libs/@tanstack/react-router+[...].mjs";
 import { _ as ArrowUpDown, c as Search, g as Bookmark, n as X, p as Eye, r as Wallet } from "../_libs/lucide-react.mjs";
-import { a as compareSites, i as chosenBonus, n as useVault, o as CATALOG } from "./router-Bnqcnrzc.mjs";
-import { c as useServerFn, i as fetchAllStatusesFn, n as SiteIcon, o as formatAdded, r as checkSiteStatus, s as money, t as AppFrame } from "./format-SzEQ0MdY.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/routes-CnvIiGGw.js
+import { a as compareSites, i as chosenBonus, n as useVault, o as CATALOG } from "./router-CY5l7gOj.mjs";
+import { c as useServerFn, i as fetchAllStatusesFn, n as SiteIcon, o as formatAdded, r as checkSiteStatus, s as money, t as AppFrame } from "./format-CRHN_JTI.mjs";
+//#region node_modules/.nitro/vite/services/ssr/assets/routes-WDv9ID1j.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 var GROUP_LABEL = {

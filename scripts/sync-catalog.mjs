@@ -4,14 +4,9 @@ const CATALOG_PATH = new URL("../src/data/sites.ts", import.meta.url);
 const HOMEPAGE_URL = "https://bestpokieslist.online/api/homepage-domains.php?build=v6";
 const STATUS_URL = "https://intel.bestpokieslist.online/public/statuses";
 
-const PRESERVED_UNVERIFIED = [
+const ABSENT_UNVERIFIED = [
   { domain: "me96.com", addedAt: "2026-09-24T09:45:24+10:00" },
-  { domain: "truemateaus.com", addedAt: "2026-09-23T05:56:54+10:00" },
-  { domain: "goalspin.vip", addedAt: "2026-09-20T03:27:13+10:00" },
   { domain: "babymolly88.com", addedAt: "2026-09-15T15:59:42+10:00" },
-  { domain: "veeclub.net", addedAt: "2026-09-15T09:43:47+10:00" },
-  { domain: "chuckmeth9.net", addedAt: "2026-09-12T02:50:26+10:00" },
-  { domain: "ox38.net", addedAt: "2026-09-12T02:46:38+10:00" },
 ];
 
 function mapGroup(name) {
@@ -110,6 +105,7 @@ async function main() {
 
   const catalog = [];
   const seen = new Set();
+  const fromSource = new Set();
   const counts = { new: 0, best: 0, unverified: 0, share: 0, latest: 0 };
   const unmapped = new Set();
   for (const item of homepageItems) {
@@ -122,6 +118,7 @@ async function main() {
       group = "latest";
     }
     seen.add(domain);
+    fromSource.add(domain);
     const addedAt = typeof item.addedAt === "string" && item.addedAt ? item.addedAt : null;
     catalog.push({ domain, group, addedAt });
     counts[group] += 1;
@@ -142,11 +139,16 @@ async function main() {
     onlyStatus += 1;
   }
 
-  const pinned = new Set(PRESERVED_UNVERIFIED.map((item) => item.domain));
-  const rest = catalog.filter((site) => !pinned.has(site.domain));
-  catalog.length = 0;
-  for (const item of PRESERVED_UNVERIFIED) catalog.push({ domain: item.domain, group: "unverified", addedAt: item.addedAt });
-  catalog.push(...rest);
+  for (const item of ABSENT_UNVERIFIED) {
+    if (fromSource.has(item.domain)) continue;
+    const existing = catalog.find((site) => site.domain === item.domain);
+    if (existing) {
+      existing.group = "unverified";
+      existing.addedAt = item.addedAt;
+    } else {
+      catalog.push({ domain: item.domain, group: "unverified", addedAt: item.addedAt });
+    }
+  }
   for (const key of Object.keys(counts)) counts[key] = 0;
   for (const site of catalog) counts[site.group] += 1;
   onlyStatus = catalog.filter((site) => site.group === "latest" && site.addedAt == null).length;

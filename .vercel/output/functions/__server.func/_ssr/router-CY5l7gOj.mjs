@@ -3,7 +3,7 @@ import { S as require_jsx_runtime, Y as require_react, _ as lazyRouteComponent, 
 import { n as normalizeDomain, t as isPublicDomain } from "./domain-CILCWuBu.mjs";
 import { a as TriangleAlert } from "../_libs/lucide-react.mjs";
 import { a as union, i as string, n as number, r as object, t as literal } from "../_libs/zod.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/router-Bnqcnrzc.js
+//#region node_modules/.nitro/vite/services/ssr/assets/router-CY5l7gOj.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 var __defProp = Object.defineProperty;
@@ -407,41 +407,6 @@ function themeById(id) {
 }
 var CATALOG_0 = [
 	{
-		"domain": "me96.com",
-		"group": "unverified",
-		"addedAt": "2026-09-24T09:45:24+10:00"
-	},
-	{
-		"domain": "truemateaus.com",
-		"group": "unverified",
-		"addedAt": "2026-09-23T05:56:54+10:00"
-	},
-	{
-		"domain": "goalspin.vip",
-		"group": "unverified",
-		"addedAt": "2026-09-20T03:27:13+10:00"
-	},
-	{
-		"domain": "babymolly88.com",
-		"group": "unverified",
-		"addedAt": "2026-09-15T15:59:42+10:00"
-	},
-	{
-		"domain": "veeclub.net",
-		"group": "unverified",
-		"addedAt": "2026-09-15T09:43:47+10:00"
-	},
-	{
-		"domain": "chuckmeth9.net",
-		"group": "unverified",
-		"addedAt": "2026-09-12T02:50:26+10:00"
-	},
-	{
-		"domain": "ox38.net",
-		"group": "unverified",
-		"addedAt": "2026-09-12T02:46:38+10:00"
-	},
-	{
 		"domain": "iw99au.com",
 		"group": "new",
 		"addedAt": "2026-08-29T09:33:22+10:00"
@@ -480,6 +445,31 @@ var CATALOG_0 = [
 		"domain": "me96.net",
 		"group": "new",
 		"addedAt": "2026-09-23T14:17:15+10:00"
+	},
+	{
+		"domain": "truemateaus.com",
+		"group": "new",
+		"addedAt": "2026-09-23T05:56:54+10:00"
+	},
+	{
+		"domain": "goalspin.vip",
+		"group": "new",
+		"addedAt": "2026-09-20T03:27:13+10:00"
+	},
+	{
+		"domain": "veeclub.net",
+		"group": "new",
+		"addedAt": "2026-09-15T09:43:47+10:00"
+	},
+	{
+		"domain": "chuckmeth9.net",
+		"group": "new",
+		"addedAt": "2026-09-12T02:50:26+10:00"
+	},
+	{
+		"domain": "ox38.net",
+		"group": "new",
+		"addedAt": "2026-09-12T02:46:38+10:00"
 	},
 	{
 		"domain": "yes68.vip",
@@ -922,7 +912,7 @@ var CATALOG_0 = [
 		"addedAt": "2026-09-26T08:35:23+10:00"
 	},
 	{
-		"domain": "11winau.com",
+		"domain": "11win.co",
 		"group": "latest",
 		"addedAt": "2026-09-27T16:15:51+10:00"
 	},
@@ -3905,9 +3895,7 @@ var CATALOG_0 = [
 		"domain": "crown69.online",
 		"group": "latest",
 		"addedAt": "2026-08-29T09:33:22+10:00"
-	}
-];
-var CATALOG_1 = [
+	},
 	{
 		"domain": "crown9au.com",
 		"group": "latest",
@@ -3917,7 +3905,9 @@ var CATALOG_1 = [
 		"domain": "crownaud.net",
 		"group": "latest",
 		"addedAt": "2026-08-29T09:33:22+10:00"
-	},
+	}
+];
+var CATALOG_1 = [
 	{
 		"domain": "cuntcunt.org",
 		"group": "latest",
@@ -5574,7 +5564,7 @@ var CATALOG_1 = [
 		"addedAt": "2026-09-27T04:54:14+10:00"
 	},
 	{
-		"domain": "u1winau.com",
+		"domain": "u1winaus.com",
 		"group": "latest",
 		"addedAt": "2026-09-25T16:36:57+10:00"
 	},
@@ -5930,11 +5920,6 @@ var CATALOG_1 = [
 	},
 	{
 		"domain": "100pokies.com",
-		"group": "latest",
-		"addedAt": null
-	},
-	{
-		"domain": "11win.co",
 		"group": "latest",
 		"addedAt": null
 	},
@@ -7407,9 +7392,7 @@ var CATALOG_1 = [
 		"domain": "call96.com",
 		"group": "latest",
 		"addedAt": null
-	}
-];
-var CATALOG_2 = [
+	},
 	{
 		"domain": "candy29.com",
 		"group": "latest",
@@ -7424,7 +7407,9 @@ var CATALOG_2 = [
 		"domain": "candypokies.com",
 		"group": "latest",
 		"addedAt": null
-	},
+	}
+];
+var CATALOG_2 = [
 	{
 		"domain": "cannabisaud.com",
 		"group": "latest",
@@ -9801,6 +9786,11 @@ var CATALOG_2 = [
 		"addedAt": null
 	},
 	{
+		"domain": "me96.com",
+		"group": "unverified",
+		"addedAt": "2026-09-24T09:45:24+10:00"
+	},
+	{
 		"domain": "me99aud.com",
 		"group": "latest",
 		"addedAt": null
@@ -10909,9 +10899,7 @@ var CATALOG_2 = [
 		"domain": "raabet9.com",
 		"group": "latest",
 		"addedAt": null
-	}
-];
-var CATALOG_3 = [
+	},
 	{
 		"domain": "race96.co",
 		"group": "latest",
@@ -10921,7 +10909,9 @@ var CATALOG_3 = [
 		"domain": "ragecoke.com",
 		"group": "latest",
 		"addedAt": null
-	},
+	}
+];
+var CATALOG_3 = [
 	{
 		"domain": "ragespin.net",
 		"group": "latest",
@@ -12158,7 +12148,7 @@ var CATALOG_3 = [
 		"addedAt": null
 	},
 	{
-		"domain": "u1winaus.com",
+		"domain": "u1winau.com",
 		"group": "latest",
 		"addedAt": null
 	},
@@ -12831,6 +12821,11 @@ var CATALOG_3 = [
 		"domain": "zspin22.com",
 		"group": "latest",
 		"addedAt": null
+	},
+	{
+		"domain": "babymolly88.com",
+		"group": "unverified",
+		"addedAt": "2026-09-15T15:59:42+10:00"
 	}
 ];
 var CATALOG = [
@@ -13195,9 +13190,9 @@ var Route$2 = createRootRoute({
 		] })]
 	})
 });
-var $$splitComponentImporter$1 = () => import("./routes-CnvIiGGw.mjs");
+var $$splitComponentImporter$1 = () => import("./routes-WDv9ID1j.mjs");
 var Route$1 = createFileRoute("/")({ component: lazyRouteComponent($$splitComponentImporter$1, "component") });
-var $$splitComponentImporter = () => import("./fetch-B7AkO5rx.mjs");
+var $$splitComponentImporter = () => import("./fetch-C3SOJIcM.mjs");
 var Route = createFileRoute("/fetch")({ component: lazyRouteComponent($$splitComponentImporter, "component") });
 var rootRouteChildren = {
 	IndexRoute: Route$1.update({

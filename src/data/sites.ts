@@ -8,41 +8,6 @@ export type CatalogSite = {
 
 const CATALOG_0: CatalogSite[] = [
   {
-    "domain": "me96.com",
-    "group": "unverified",
-    "addedAt": "2026-09-24T09:45:24+10:00"
-  },
-  {
-    "domain": "truemateaus.com",
-    "group": "unverified",
-    "addedAt": "2026-09-23T05:56:54+10:00"
-  },
-  {
-    "domain": "goalspin.vip",
-    "group": "unverified",
-    "addedAt": "2026-09-20T03:27:13+10:00"
-  },
-  {
-    "domain": "babymolly88.com",
-    "group": "unverified",
-    "addedAt": "2026-09-15T15:59:42+10:00"
-  },
-  {
-    "domain": "veeclub.net",
-    "group": "unverified",
-    "addedAt": "2026-09-15T09:43:47+10:00"
-  },
-  {
-    "domain": "chuckmeth9.net",
-    "group": "unverified",
-    "addedAt": "2026-09-12T02:50:26+10:00"
-  },
-  {
-    "domain": "ox38.net",
-    "group": "unverified",
-    "addedAt": "2026-09-12T02:46:38+10:00"
-  },
-  {
     "domain": "iw99au.com",
     "group": "new",
     "addedAt": "2026-08-29T09:33:22+10:00"
@@ -81,6 +46,31 @@ const CATALOG_0: CatalogSite[] = [
     "domain": "me96.net",
     "group": "new",
     "addedAt": "2026-09-23T14:17:15+10:00"
+  },
+  {
+    "domain": "truemateaus.com",
+    "group": "new",
+    "addedAt": "2026-09-23T05:56:54+10:00"
+  },
+  {
+    "domain": "goalspin.vip",
+    "group": "new",
+    "addedAt": "2026-09-20T03:27:13+10:00"
+  },
+  {
+    "domain": "veeclub.net",
+    "group": "new",
+    "addedAt": "2026-09-15T09:43:47+10:00"
+  },
+  {
+    "domain": "chuckmeth9.net",
+    "group": "new",
+    "addedAt": "2026-09-12T02:50:26+10:00"
+  },
+  {
+    "domain": "ox38.net",
+    "group": "new",
+    "addedAt": "2026-09-12T02:46:38+10:00"
   },
   {
     "domain": "yes68.vip",
@@ -523,7 +513,7 @@ const CATALOG_0: CatalogSite[] = [
     "addedAt": "2026-09-26T08:35:23+10:00"
   },
   {
-    "domain": "11winau.com",
+    "domain": "11win.co",
     "group": "latest",
     "addedAt": "2026-09-27T16:15:51+10:00"
   },
@@ -3506,10 +3496,7 @@ const CATALOG_0: CatalogSite[] = [
     "domain": "crown69.online",
     "group": "latest",
     "addedAt": "2026-08-29T09:33:22+10:00"
-  }
-]
-
-const CATALOG_1: CatalogSite[] = [
+  },
   {
     "domain": "crown9au.com",
     "group": "latest",
@@ -3519,7 +3506,10 @@ const CATALOG_1: CatalogSite[] = [
     "domain": "crownaud.net",
     "group": "latest",
     "addedAt": "2026-08-29T09:33:22+10:00"
-  },
+  }
+]
+
+const CATALOG_1: CatalogSite[] = [
   {
     "domain": "cuntcunt.org",
     "group": "latest",
@@ -5176,7 +5166,7 @@ const CATALOG_1: CatalogSite[] = [
     "addedAt": "2026-09-27T04:54:14+10:00"
   },
   {
-    "domain": "u1winau.com",
+    "domain": "u1winaus.com",
     "group": "latest",
     "addedAt": "2026-09-25T16:36:57+10:00"
   },
@@ -5532,11 +5522,6 @@ const CATALOG_1: CatalogSite[] = [
   },
   {
     "domain": "100pokies.com",
-    "group": "latest",
-    "addedAt": null
-  },
-  {
-    "domain": "11win.co",
     "group": "latest",
     "addedAt": null
   },
@@ -7009,10 +6994,7 @@ const CATALOG_1: CatalogSite[] = [
     "domain": "call96.com",
     "group": "latest",
     "addedAt": null
-  }
-]
-
-const CATALOG_2: CatalogSite[] = [
+  },
   {
     "domain": "candy29.com",
     "group": "latest",
@@ -7027,7 +7009,10 @@ const CATALOG_2: CatalogSite[] = [
     "domain": "candypokies.com",
     "group": "latest",
     "addedAt": null
-  },
+  }
+]
+
+const CATALOG_2: CatalogSite[] = [
   {
     "domain": "cannabisaud.com",
     "group": "latest",
@@ -9404,6 +9389,11 @@ const CATALOG_2: CatalogSite[] = [
     "addedAt": null
   },
   {
+    "domain": "me96.com",
+    "group": "unverified",
+    "addedAt": "2026-09-24T09:45:24+10:00"
+  },
+  {
     "domain": "me99aud.com",
     "group": "latest",
     "addedAt": null
@@ -10512,10 +10502,7 @@ const CATALOG_2: CatalogSite[] = [
     "domain": "raabet9.com",
     "group": "latest",
     "addedAt": null
-  }
-]
-
-const CATALOG_3: CatalogSite[] = [
+  },
   {
     "domain": "race96.co",
     "group": "latest",
@@ -10525,7 +10512,10 @@ const CATALOG_3: CatalogSite[] = [
     "domain": "ragecoke.com",
     "group": "latest",
     "addedAt": null
-  },
+  }
+]
+
+const CATALOG_3: CatalogSite[] = [
   {
     "domain": "ragespin.net",
     "group": "latest",
@@ -11762,7 +11752,7 @@ const CATALOG_3: CatalogSite[] = [
     "addedAt": null
   },
   {
-    "domain": "u1winaus.com",
+    "domain": "u1winau.com",
     "group": "latest",
     "addedAt": null
   },
@@ -12435,6 +12425,11 @@ const CATALOG_3: CatalogSite[] = [
     "domain": "zspin22.com",
     "group": "latest",
     "addedAt": null
+  },
+  {
+    "domain": "babymolly88.com",
+    "group": "unverified",
+    "addedAt": "2026-09-15T15:59:42+10:00"
   }
 ]
 
