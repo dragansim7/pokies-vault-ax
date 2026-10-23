@@ -3,7 +3,7 @@ import { S as require_jsx_runtime, Y as require_react, _ as lazyRouteComponent, 
 import { n as normalizeDomain, t as isPublicDomain } from "./domain-CILCWuBu.mjs";
 import { a as TriangleAlert } from "../_libs/lucide-react.mjs";
 import { a as union, i as string, n as number, r as object, t as literal } from "../_libs/zod.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/router-CY5l7gOj.js
+//#region node_modules/.nitro/vite/services/ssr/assets/router-CvWpupvS.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 var __defProp = Object.defineProperty;
@@ -12945,6 +12945,7 @@ var EMPTY = {
 			password: ""
 		}
 	],
+	logins: {},
 	lastFetch: null,
 	attentionChecked: [],
 	view: "default",
@@ -12955,6 +12956,27 @@ var EMPTY = {
 	bonusMode: "none",
 	theme: "vault"
 };
+function usableLogin(value) {
+	if (!value || typeof value !== "object") return null;
+	const phone = String(value.phone ?? "").replace(/\s+/g, "");
+	const password = String(value.password ?? "");
+	if (!/^[0-9+]{6,20}$/.test(phone) || password.length < 4 || password.length > 64) return null;
+	return {
+		phone,
+		password
+	};
+}
+function cleanLogins(value) {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+	const out = {};
+	for (const [rawDomain, rawLogin] of Object.entries(value)) {
+		const domain = normalizeDomain(rawDomain);
+		const login = usableLogin(rawLogin);
+		if (!isPublicDomain(domain) || !login) continue;
+		out[domain] = login;
+	}
+	return out;
+}
 function load() {
 	try {
 		const raw = localStorage.getItem(KEY);
@@ -12967,6 +12989,7 @@ function load() {
 			mine: Array.isArray(parsed.mine) ? parsed.mine : [],
 			custom: Array.isArray(parsed.custom) ? parsed.custom : [],
 			fallbacks: Array.isArray(parsed.fallbacks) && parsed.fallbacks.length === 3 ? parsed.fallbacks : EMPTY.fallbacks,
+			logins: cleanLogins(parsed.logins),
 			sort: isSortMode(parsed.sort) ? parsed.sort : EMPTY.sort,
 			bonusMode: parsed.bonusMode ?? EMPTY.bonusMode,
 			theme: isThemeId(parsed.theme) ? parsed.theme : EMPTY.theme,
@@ -13059,6 +13082,38 @@ function VaultProvider({ children }) {
 			return next;
 		});
 	}, []);
+	const rememberLogins = (0, import_react.useCallback)((updates) => {
+		if (!updates.length) return;
+		setState((current) => {
+			const logins = { ...current.logins };
+			let changed = false;
+			for (const update of updates) {
+				const domain = normalizeDomain(update.domain);
+				if (!isPublicDomain(domain)) continue;
+				const login = usableLogin(update.login);
+				if (!login) {
+					if (domain in logins) {
+						delete logins[domain];
+						changed = true;
+					}
+					continue;
+				}
+				const prev = logins[domain];
+				if (prev && prev.phone === login.phone && prev.password === login.password) continue;
+				logins[domain] = login;
+				changed = true;
+			}
+			if (!changed) return current;
+			const next = {
+				...current,
+				logins
+			};
+			try {
+				localStorage.setItem(KEY, JSON.stringify(next));
+			} catch {}
+			return next;
+		});
+	}, []);
 	const addDomain = (0, import_react.useCallback)((raw) => {
 		const domain = normalizeDomain(raw);
 		if (!isPublicDomain(domain)) return "Enter a domain like 9au.com";
@@ -13111,6 +13166,7 @@ function VaultProvider({ children }) {
 		toggleMine,
 		addDomain,
 		rememberAccount,
+		rememberLogins,
 		saveFetch,
 		clearAll
 	}), [
@@ -13122,6 +13178,7 @@ function VaultProvider({ children }) {
 		toggleMine,
 		addDomain,
 		rememberAccount,
+		rememberLogins,
 		saveFetch,
 		clearAll
 	]);
@@ -13190,9 +13247,9 @@ var Route$2 = createRootRoute({
 		] })]
 	})
 });
-var $$splitComponentImporter$1 = () => import("./routes-WDv9ID1j.mjs");
+var $$splitComponentImporter$1 = () => import("./routes-AGfTOu65.mjs");
 var Route$1 = createFileRoute("/")({ component: lazyRouteComponent($$splitComponentImporter$1, "component") });
-var $$splitComponentImporter = () => import("./fetch-C3SOJIcM.mjs");
+var $$splitComponentImporter = () => import("./fetch-BGa0KRHv.mjs");
 var Route = createFileRoute("/fetch")({ component: lazyRouteComponent($$splitComponentImporter, "component") });
 var rootRouteChildren = {
 	IndexRoute: Route$1.update({

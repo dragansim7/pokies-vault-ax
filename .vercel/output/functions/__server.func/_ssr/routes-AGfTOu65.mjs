@@ -1,9 +1,9 @@
 import { i as __toESM } from "../_runtime.mjs";
 import { S as require_jsx_runtime, Y as require_react } from "../_libs/@tanstack/react-router+[...].mjs";
 import { _ as ArrowUpDown, c as Search, g as Bookmark, n as X, p as Eye, r as Wallet } from "../_libs/lucide-react.mjs";
-import { a as compareSites, i as chosenBonus, n as useVault, o as CATALOG } from "./router-CY5l7gOj.mjs";
-import { c as useServerFn, i as fetchAllStatusesFn, n as SiteIcon, o as formatAdded, r as checkSiteStatus, s as money, t as AppFrame } from "./format-CRHN_JTI.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/routes-WDv9ID1j.js
+import { a as compareSites, i as chosenBonus, n as useVault, o as CATALOG } from "./router-CvWpupvS.mjs";
+import { c as useServerFn, i as fetchAllStatusesFn, n as SiteIcon, o as formatAdded, r as checkSiteStatus, s as money, t as AppFrame } from "./format-DwFnxZeC.mjs";
+//#region node_modules/.nitro/vite/services/ssr/assets/routes-AGfTOu65.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 var GROUP_LABEL = {
@@ -478,7 +478,7 @@ function Home() {
 				}),
 				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", {
 					className: "story-card",
-					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h3", { children: "The fetch" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "The same phone and password is tried on the wallet login these sites share. A hit keeps the site. A rejection does not." })]
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h3", { children: "The fetch" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "The login that worked is remembered for that site and tried first next time. New sites use the phone and password you enter. A hit keeps the site. A rejection does not." })]
 				}),
 				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", {
 					className: "story-card",

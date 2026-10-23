@@ -2,8 +2,8 @@ import { i as __toESM } from "../_runtime.mjs";
 import { G as isRedirect, S as require_jsx_runtime, Y as require_react, b as Link, p as useRouterState, x as useRouter } from "../_libs/@tanstack/react-router+[...].mjs";
 import { n as TSS_SERVER_FUNCTION, r as getServerFnById, t as createServerFn } from "./ssr.mjs";
 import { d as Menu, i as UserRound, l as Plus, n as X, o as Trash2, s as Shield, t as Zap, u as Palette } from "../_libs/lucide-react.mjs";
-import { n as useVault, s as THEMES } from "./router-CY5l7gOj.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/format-CRHN_JTI.js
+import { n as useVault, s as THEMES } from "./router-CvWpupvS.mjs";
+//#region node_modules/.nitro/vite/services/ssr/assets/format-DwFnxZeC.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 function useServerFn(serverFn) {
@@ -177,7 +177,7 @@ function AppFrame({ children }) {
 							}),
 							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 								className: "drawer-item",
-								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Shield, { size: 18 }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "Same login on each site" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("small", { children: "Phone and password, this browser only" })] })]
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Shield, { size: 18 }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "Saved login per site" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("small", { children: "Phone and password, this browser only" })] })]
 							}),
 							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
 								type: "button",

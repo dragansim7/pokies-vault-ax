@@ -44,6 +44,44 @@ function chunkDomains(domains: string[]): string[][] {
   return batches;
 }
 
+function loginKey(login: FallbackCred): string {
+  return `${login.phone}\0${login.password}`;
+}
+
+function usableLogin(login: FallbackCred | null | undefined): FallbackCred | null {
+  if (!login) return null;
+  const phone = login.phone.replace(/\s+/g, "");
+  if (!/^[0-9+]{6,20}$/.test(phone) || login.password.length < 4 || login.password.length > 64) return null;
+  return { phone, password: login.password };
+}
+
+function planBatches(domains: string[], form: FallbackCred[], saved: Record<string, FallbackCred>) {
+  const groups = new Map<string, { first: FallbackCred; domains: string[] }>();
+  const fresh: string[] = [];
+  for (const domain of domains) {
+    const known = usableLogin(saved[domain]);
+    if (!known) {
+      fresh.push(domain);
+      continue;
+    }
+    const key = loginKey(known);
+    const group = groups.get(key);
+    if (group) group.domains.push(domain);
+    else groups.set(key, { first: known, domains: [domain] });
+  }
+  const batches: { domains: string[]; creds: FallbackCred[] }[] = [];
+  for (const group of groups.values()) {
+    const rest = form.filter((cred) => loginKey(cred) !== loginKey(group.first));
+    for (const slice of chunkDomains(group.domains)) {
+      batches.push({ domains: slice, creds: [group.first, ...rest] });
+    }
+  }
+  if (fresh.length && form.length) {
+    for (const slice of chunkDomains(fresh)) batches.push({ domains: slice, creds: form });
+  }
+  return { batches, unseen: form.length ? 0 : fresh.length };
+}
+
 const TONES = ["tone-0", "tone-1", "tone-2", "tone-3", "tone-4"] as const;
 
 type MoneyBox = { label: string; amount: number; kind: "wallet" | "promo" };
@@ -307,7 +345,7 @@ function NeedsAttention({
 }
 
 export function Fetcher() {
-  const { state, patch, rememberAccount, saveFetch } = useVault();
+  const { state, patch, rememberAccount, rememberLogins, saveFetch } = useVault();
   const fetchBatch = useServerFn(fetchCasinoBatchFn);
   const [showPassword, setShowPassword] = useState(false);
   const [advanced, setAdvanced] = useState(false);
@@ -331,11 +369,16 @@ export function Fetcher() {
   }, []);
 
   const creds = useMemo(() => {
-    const list = [{ phone: state.phone.trim(), password: state.password }];
-    for (const item of state.fallbacks) {
-      if (item.phone.trim() && item.password) list.push({ phone: item.phone.trim(), password: item.password });
+    const list = [usableLogin({ phone: state.phone, password: state.password })];
+    for (const item of state.fallbacks) list.push(usableLogin(item));
+    const seen = new Set<string>();
+    const out: FallbackCred[] = [];
+    for (const item of list) {
+      if (!item || seen.has(loginKey(item))) continue;
+      seen.add(loginKey(item));
+      out.push(item);
     }
-    return list.filter((item) => item.phone && item.password);
+    return out;
   }, [state.phone, state.password, state.fallbacks]);
 
   const valid = rows.filter((row): row is AccountOk => row.ok && row.hasData);
@@ -355,13 +398,14 @@ export function Fetcher() {
   }
 
   async function run(domains: string[], resumeFrom?: RunCheckpoint) {
-    if (!creds.length) {
-      setStatus("Enter your phone number and password before fetching.");
-      return;
-    }
     const unique = Array.from(new Set(domains));
     if (!unique.length) {
       setStatus("No sites to check. Save accounts from the list, add a domain, or scan.");
+      return;
+    }
+    const { batches, unseen } = planBatches(unique, creds, state.logins);
+    if (!batches.length) {
+      setStatus("Enter your phone number and password before fetching.");
       return;
     }
     const previousAt = state.lastFetch?.at ?? null;
@@ -371,7 +415,7 @@ export function Fetcher() {
     stopRef.current = controller;
     const collected: AccountRow[] = resumeFrom ? [...resumeFrom.rows] : [];
     const done = resumeFrom ? [...resumeFrom.done] : [];
-    const total = resumeFrom ? CATALOG.length : unique.length;
+    const total = resumeFrom ? CATALOG.length : unique.length - unseen;
     setRunning(true);
     setShowErrors(false);
     setDiffs([]);
@@ -383,10 +427,13 @@ export function Fetcher() {
         ? `Resuming ${done.length} of ${CATALOG.length}…`
         : unique.length === 1
           ? `Checking ${unique[0]}…`
-          : `Checking ${unique.length} sites…`,
+          : unseen
+            ? `Checking ${total} sites that already have a saved login…`
+            : `Checking ${unique.length} sites…`,
     );
 
-    const publish = (batchRows: AccountRow[]) => {
+    const publish = (batchRows: AccountRow[], loginNotes: { domain: string; login: FallbackCred | null }[]) => {
+      rememberLogins(loginNotes);
       for (const row of batchRows) {
         if (row.ok) rememberAccount(row.domain);
         const index = collected.findIndex((item) => item.domain === row.domain);
@@ -402,7 +449,6 @@ export function Fetcher() {
       setPendingRun(done.length < CATALOG.length ? checkpoint : null);
     };
 
-    const batches = chunkDomains(unique);
     let cursor = 0;
     const worker = async () => {
       for (;;) {
@@ -410,11 +456,13 @@ export function Fetcher() {
         const index = cursor;
         cursor += 1;
         if (index >= batches.length) return;
-        const batch = batches[index] ?? [];
-        let pending = batch;
+        const batch = batches[index];
+        if (!batch) return;
+        let pending = batch.domains;
         const settled = new Map<string, AccountRow>();
+        const loginNotes: { domain: string; login: FallbackCred | null }[] = [];
         try {
-          for (const cred of creds) {
+          for (const cred of batch.creds) {
             if (controller.signal.aborted || !pending.length) break;
             const result = await fetchBatch({
               data: { domains: pending, phone: cred.phone, password: cred.password },
@@ -423,11 +471,17 @@ export function Fetcher() {
             const retry: string[] = [];
             const returned = new Set(result.map((row) => row.domain));
             for (const row of result) {
-              if (row.ok || row.code !== "invalid_login") settled.set(row.domain, row);
-              else retry.push(row.domain);
+              if (row.ok) {
+                settled.set(row.domain, row);
+                loginNotes.push({ domain: row.domain, login: cred });
+              } else if (row.code !== "invalid_login") {
+                settled.set(row.domain, row);
+              } else {
+                retry.push(row.domain);
+              }
             }
             for (const domain of pending) {
-              if (!returned.has(domain)) retry.push(domain);
+              if (!returned.has(domain) && !settled.has(domain)) retry.push(domain);
             }
             pending = retry;
           }
@@ -441,8 +495,12 @@ export function Fetcher() {
         if (controller.signal.aborted) return;
         for (const domain of pending) {
           settled.set(domain, { domain, ok: false, code: "invalid_login", message: "Not your account" });
+          loginNotes.push({ domain, login: null });
         }
-        publish(batch.map((domain) => settled.get(domain) ?? { domain, ok: false, code: "other", message: "Check failed" }));
+        publish(
+          batch.domains.map((domain) => settled.get(domain) ?? { domain, ok: false, code: "other", message: "Check failed" }),
+          loginNotes,
+        );
       }
     };
     await Promise.all(Array.from({ length: Math.min(4, batches.length) }, () => worker()));
@@ -493,9 +551,12 @@ export function Fetcher() {
           Fetch bonus data
         </h1>
         <p className="hint">
-          Uses the same phone and password across sites that share this login. It signs in, reads your wallet
-          and bonuses, and drops everything else. No fetch limit.
+          Each site is signed in with the phone and password that worked there last time. New sites try the
+          login below, then any fallbacks. A hit is remembered on this device and used first next time.
         </p>
+        {Object.keys(state.logins).length ? (
+          <p className="hint">{Object.keys(state.logins).length} sites have a saved login.</p>
+        ) : null}
       </div>
 
       <div className="panel stack">
@@ -725,8 +786,8 @@ export function Fetcher() {
           <div className="modal-card stack" onClick={(event) => event.stopPropagation()}>
             <h3>Scan every listed site?</h3>
             <p className="hint">
-              This tries your password on {CATALOG.length} domains and keeps only the ones that sign in. It can
-              take several minutes. You can stop it at any time.
+              Sites that already signed in use that saved login. The rest try the phone and password above, then
+              any fallbacks. It can take several minutes. You can stop it at any time.
             </p>
             <div className="actions">
               <button type="button" className="btn" onClick={() => setConfirmScan(false)}>

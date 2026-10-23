@@ -47,6 +47,7 @@ export type VaultState = {
   phone: string;
   password: string;
   fallbacks: FallbackCred[];
+  logins: Record<string, FallbackCred>;
   lastFetch: LastFetch | null;
   attentionChecked: AttentionMark[];
   view: ViewMode;
@@ -69,6 +70,7 @@ const EMPTY: VaultState = {
     { phone: "", password: "" },
     { phone: "", password: "" },
   ],
+  logins: {},
   lastFetch: null,
   attentionChecked: [],
   view: "default",
@@ -79,6 +81,26 @@ const EMPTY: VaultState = {
   bonusMode: "none",
   theme: "vault",
 };
+
+function usableLogin(value: unknown): FallbackCred | null {
+  if (!value || typeof value !== "object") return null;
+  const phone = String((value as FallbackCred).phone ?? "").replace(/\s+/g, "");
+  const password = String((value as FallbackCred).password ?? "");
+  if (!/^[0-9+]{6,20}$/.test(phone) || password.length < 4 || password.length > 64) return null;
+  return { phone, password };
+}
+
+function cleanLogins(value: unknown): Record<string, FallbackCred> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const out: Record<string, FallbackCred> = {};
+  for (const [rawDomain, rawLogin] of Object.entries(value)) {
+    const domain = normalizeDomain(rawDomain);
+    const login = usableLogin(rawLogin);
+    if (!isPublicDomain(domain) || !login) continue;
+    out[domain] = login;
+  }
+  return out;
+}
 
 function load(): VaultState {
   try {
@@ -95,6 +117,7 @@ function load(): VaultState {
         Array.isArray(parsed.fallbacks) && parsed.fallbacks.length === 3
           ? parsed.fallbacks
           : EMPTY.fallbacks,
+      logins: cleanLogins(parsed.logins),
       sort: isSortMode(parsed.sort) ? parsed.sort : EMPTY.sort,
       bonusMode: parsed.bonusMode ?? EMPTY.bonusMode,
       theme: isThemeId(parsed.theme) ? parsed.theme : EMPTY.theme,
@@ -122,6 +145,7 @@ type VaultApi = {
   toggleMine: (domain: string) => void;
   addDomain: (raw: string) => string | null;
   rememberAccount: (domain: string) => void;
+  rememberLogins: (updates: { domain: string; login: FallbackCred | null }[]) => void;
   saveFetch: (rows: AccountRow[]) => void;
   clearAll: () => void;
 };
@@ -223,6 +247,38 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const rememberLogins = useCallback((updates: { domain: string; login: FallbackCred | null }[]) => {
+    if (!updates.length) return;
+    setState((current) => {
+      const logins = { ...current.logins };
+      let changed = false;
+      for (const update of updates) {
+        const domain = normalizeDomain(update.domain);
+        if (!isPublicDomain(domain)) continue;
+        const login = usableLogin(update.login);
+        if (!login) {
+          if (domain in logins) {
+            delete logins[domain];
+            changed = true;
+          }
+          continue;
+        }
+        const prev = logins[domain];
+        if (prev && prev.phone === login.phone && prev.password === login.password) continue;
+        logins[domain] = login;
+        changed = true;
+      }
+      if (!changed) return current;
+      const next = { ...current, logins };
+      try {
+        localStorage.setItem(KEY, JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }, []);
+
   const addDomain = useCallback((raw: string) => {
     const domain = normalizeDomain(raw);
     if (!isPublicDomain(domain)) return "Enter a domain like 9au.com";
@@ -271,6 +327,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       toggleMine,
       addDomain,
       rememberAccount,
+      rememberLogins,
       saveFetch,
       clearAll,
     }),
@@ -283,6 +340,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       toggleMine,
       addDomain,
       rememberAccount,
+      rememberLogins,
       saveFetch,
       clearAll,
     ],

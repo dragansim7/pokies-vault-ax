@@ -162,7 +162,7 @@ export function AppFrame({ children }: { children: ReactNode }) {
             <div className="drawer-item">
               <Shield size={18} />
               <span>
-                <strong>Same login on each site</strong>
+                <strong>Saved login per site</strong>
                 <small>Phone and password, this browser only</small>
               </span>
             </div>

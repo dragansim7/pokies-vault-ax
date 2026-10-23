@@ -21,8 +21,8 @@ function Home() {
           <article className="story-card">
             <h3>The fetch</h3>
             <p>
-              The same phone and password is tried on the wallet login these sites share. A hit keeps the site.
-              A rejection does not.
+              The login that worked is remembered for that site and tried first next time. New sites use the
+              phone and password you enter. A hit keeps the site. A rejection does not.
             </p>
           </article>
           <article className="story-card">

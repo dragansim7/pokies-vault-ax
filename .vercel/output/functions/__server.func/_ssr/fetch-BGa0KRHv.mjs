@@ -2,9 +2,9 @@ import { i as __toESM } from "../_runtime.mjs";
 import { S as require_jsx_runtime, Y as require_react, b as Link } from "../_libs/@tanstack/react-router+[...].mjs";
 import { n as normalizeDomain, t as isPublicDomain } from "./domain-CILCWuBu.mjs";
 import { f as LoaderCircle, h as ChevronLeft, m as EyeOff, p as Eye } from "../_libs/lucide-react.mjs";
-import { a as compareSites, i as chosenBonus, n as useVault, o as CATALOG, r as catalogMeta } from "./router-CY5l7gOj.mjs";
-import { a as fetchCasinoBatchFn, c as useServerFn, n as SiteIcon, o as formatAdded, s as money, t as AppFrame } from "./format-CRHN_JTI.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/fetch-C3SOJIcM.js
+import { a as compareSites, i as chosenBonus, n as useVault, o as CATALOG, r as catalogMeta } from "./router-CvWpupvS.mjs";
+import { a as fetchCasinoBatchFn, c as useServerFn, n as SiteIcon, o as formatAdded, s as money, t as AppFrame } from "./format-DwFnxZeC.mjs";
+//#region node_modules/.nitro/vite/services/ssr/assets/fetch-BGa0KRHv.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 var PAGE = 12;
@@ -35,6 +35,52 @@ function chunkDomains(domains) {
 	const batches = [];
 	for (let i = 0; i < domains.length; i += BATCH) batches.push(domains.slice(i, i + BATCH));
 	return batches;
+}
+function loginKey(login) {
+	return `${login.phone}\0${login.password}`;
+}
+function usableLogin(login) {
+	if (!login) return null;
+	const phone = login.phone.replace(/\s+/g, "");
+	if (!/^[0-9+]{6,20}$/.test(phone) || login.password.length < 4 || login.password.length > 64) return null;
+	return {
+		phone,
+		password: login.password
+	};
+}
+function planBatches(domains, form, saved) {
+	const groups = /* @__PURE__ */ new Map();
+	const fresh = [];
+	for (const domain of domains) {
+		const known = usableLogin(saved[domain]);
+		if (!known) {
+			fresh.push(domain);
+			continue;
+		}
+		const key = loginKey(known);
+		const group = groups.get(key);
+		if (group) group.domains.push(domain);
+		else groups.set(key, {
+			first: known,
+			domains: [domain]
+		});
+	}
+	const batches = [];
+	for (const group of groups.values()) {
+		const rest = form.filter((cred) => loginKey(cred) !== loginKey(group.first));
+		for (const slice of chunkDomains(group.domains)) batches.push({
+			domains: slice,
+			creds: [group.first, ...rest]
+		});
+	}
+	if (fresh.length && form.length) for (const slice of chunkDomains(fresh)) batches.push({
+		domains: slice,
+		creds: form
+	});
+	return {
+		batches,
+		unseen: form.length ? 0 : fresh.length
+	};
 }
 var TONES = [
 	"tone-0",
@@ -323,7 +369,7 @@ function NeedsAttention({ savedAt, rows, marks, onToggle }) {
 	});
 }
 function Fetcher() {
-	const { state, patch, rememberAccount, saveFetch } = useVault();
+	const { state, patch, rememberAccount, rememberLogins, saveFetch } = useVault();
 	const fetchBatch = useServerFn(fetchCasinoBatchFn);
 	const [showPassword, setShowPassword] = (0, import_react.useState)(false);
 	const [advanced, setAdvanced] = (0, import_react.useState)(false);
@@ -348,15 +394,19 @@ function Fetcher() {
 		if (saved && saved.done.length < CATALOG.length) setPendingRun(saved);
 	}, []);
 	const creds = (0, import_react.useMemo)(() => {
-		const list = [{
-			phone: state.phone.trim(),
+		const list = [usableLogin({
+			phone: state.phone,
 			password: state.password
-		}];
-		for (const item of state.fallbacks) if (item.phone.trim() && item.password) list.push({
-			phone: item.phone.trim(),
-			password: item.password
-		});
-		return list.filter((item) => item.phone && item.password);
+		})];
+		for (const item of state.fallbacks) list.push(usableLogin(item));
+		const seen = /* @__PURE__ */ new Set();
+		const out = [];
+		for (const item of list) {
+			if (!item || seen.has(loginKey(item))) continue;
+			seen.add(loginKey(item));
+			out.push(item);
+		}
+		return out;
 	}, [
 		state.phone,
 		state.password,
@@ -379,13 +429,14 @@ function Fetcher() {
 		patch({ fallbacks });
 	}
 	async function run(domains, resumeFrom) {
-		if (!creds.length) {
-			setStatus("Enter your phone number and password before fetching.");
-			return;
-		}
 		const unique = Array.from(new Set(domains));
 		if (!unique.length) {
 			setStatus("No sites to check. Save accounts from the list, add a domain, or scan.");
+			return;
+		}
+		const { batches, unseen } = planBatches(unique, creds, state.logins);
+		if (!batches.length) {
+			setStatus("Enter your phone number and password before fetching.");
 			return;
 		}
 		const previousAt = state.lastFetch?.at ?? null;
@@ -395,7 +446,7 @@ function Fetcher() {
 		stopRef.current = controller;
 		const collected = resumeFrom ? [...resumeFrom.rows] : [];
 		const done = resumeFrom ? [...resumeFrom.done] : [];
-		const total = resumeFrom ? CATALOG.length : unique.length;
+		const total = resumeFrom ? CATALOG.length : unique.length - unseen;
 		setRunning(true);
 		setShowErrors(false);
 		setDiffs([]);
@@ -405,8 +456,9 @@ function Fetcher() {
 			done: done.length,
 			total
 		});
-		setStatus(resumeFrom ? `Resuming ${done.length} of ${CATALOG.length}…` : unique.length === 1 ? `Checking ${unique[0]}…` : `Checking ${unique.length} sites…`);
-		const publish = (batchRows) => {
+		setStatus(resumeFrom ? `Resuming ${done.length} of ${CATALOG.length}…` : unique.length === 1 ? `Checking ${unique[0]}…` : unseen ? `Checking ${total} sites that already have a saved login…` : `Checking ${unique.length} sites…`);
+		const publish = (batchRows, loginNotes) => {
+			rememberLogins(loginNotes);
 			for (const row of batchRows) {
 				if (row.ok) rememberAccount(row.domain);
 				const index = collected.findIndex((item) => item.domain === row.domain);
@@ -428,7 +480,6 @@ function Fetcher() {
 			writeRun(checkpoint);
 			setPendingRun(done.length < CATALOG.length ? checkpoint : null);
 		};
-		const batches = chunkDomains(unique);
 		let cursor = 0;
 		const worker = async () => {
 			for (;;) {
@@ -436,11 +487,13 @@ function Fetcher() {
 				const index = cursor;
 				cursor += 1;
 				if (index >= batches.length) return;
-				const batch = batches[index] ?? [];
-				let pending = batch;
+				const batch = batches[index];
+				if (!batch) return;
+				let pending = batch.domains;
 				const settled = /* @__PURE__ */ new Map();
+				const loginNotes = [];
 				try {
-					for (const cred of creds) {
+					for (const cred of batch.creds) {
 						if (controller.signal.aborted || !pending.length) break;
 						const result = await fetchBatch({
 							data: {
@@ -452,9 +505,15 @@ function Fetcher() {
 						});
 						const retry = [];
 						const returned = new Set(result.map((row) => row.domain));
-						for (const row of result) if (row.ok || row.code !== "invalid_login") settled.set(row.domain, row);
+						for (const row of result) if (row.ok) {
+							settled.set(row.domain, row);
+							loginNotes.push({
+								domain: row.domain,
+								login: cred
+							});
+						} else if (row.code !== "invalid_login") settled.set(row.domain, row);
 						else retry.push(row.domain);
-						for (const domain of pending) if (!returned.has(domain)) retry.push(domain);
+						for (const domain of pending) if (!returned.has(domain) && !settled.has(domain)) retry.push(domain);
 						pending = retry;
 					}
 				} catch (error) {
@@ -468,18 +527,24 @@ function Fetcher() {
 					pending = [];
 				}
 				if (controller.signal.aborted) return;
-				for (const domain of pending) settled.set(domain, {
-					domain,
-					ok: false,
-					code: "invalid_login",
-					message: "Not your account"
-				});
-				publish(batch.map((domain) => settled.get(domain) ?? {
+				for (const domain of pending) {
+					settled.set(domain, {
+						domain,
+						ok: false,
+						code: "invalid_login",
+						message: "Not your account"
+					});
+					loginNotes.push({
+						domain,
+						login: null
+					});
+				}
+				publish(batch.domains.map((domain) => settled.get(domain) ?? {
 					domain,
 					ok: false,
 					code: "other",
 					message: "Check failed"
-				}));
+				}), loginNotes);
 			}
 		};
 		await Promise.all(Array.from({ length: Math.min(4, batches.length) }, () => worker()));
@@ -519,14 +584,21 @@ function Fetcher() {
 				},
 				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(ChevronLeft, { size: 16 }), " Back to the list"]
 			}),
-			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h1", {
-				className: "brand grad-text",
-				style: { fontSize: "1.7rem" },
-				children: "Fetch bonus data"
-			}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
-				className: "hint",
-				children: "Uses the same phone and password across sites that share this login. It signs in, reads your wallet and bonuses, and drops everything else. No fetch limit."
-			})] }),
+			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+				/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h1", {
+					className: "brand grad-text",
+					style: { fontSize: "1.7rem" },
+					children: "Fetch bonus data"
+				}),
+				/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+					className: "hint",
+					children: "Each site is signed in with the phone and password that worked there last time. New sites try the login below, then any fallbacks. A hit is remembered on this device and used first next time."
+				}),
+				Object.keys(state.logins).length ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+					className: "hint",
+					children: [Object.keys(state.logins).length, " sites have a saved login."]
+				}) : null
+			] }),
 			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 				className: "panel stack",
 				children: [
@@ -796,13 +868,9 @@ function Fetcher() {
 					onClick: (event) => event.stopPropagation(),
 					children: [
 						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h3", { children: "Scan every listed site?" }),
-						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
 							className: "hint",
-							children: [
-								"This tries your password on ",
-								CATALOG.length,
-								" domains and keeps only the ones that sign in. It can take several minutes. You can stop it at any time."
-							]
+							children: "Sites that already signed in use that saved login. The rest try the phone and password above, then any fallbacks. It can take several minutes. You can stop it at any time."
 						}),
 						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 							className: "actions",
