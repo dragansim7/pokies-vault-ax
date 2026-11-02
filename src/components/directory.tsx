@@ -1,15 +1,15 @@
 import { useServerFn } from "@tanstack/react-start";
-import { ArrowUpDown, Bookmark, Eye, Search, Wallet, X } from "lucide-react";
+import { ArrowUpDown, Eye, Search, Wallet, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CATALOG, type CatalogSite, type SiteGroup } from "@/data/sites";
+import { type SiteGroup } from "@/data/sites";
+import { visibleSites, type ListedSite } from "@/lib/working-sites";
 import { checkSiteStatus, fetchAllStatusesFn } from "@/lib/casino.functions";
-import { formatAdded, money } from "@/lib/format";
-import type { AccountOk, AccountRow, BonusView } from "@/lib/parse-account";
-import { SiteIcon } from "@/components/site-icon";
+import { AccountCard } from "@/components/account-card";
 import { useVault, type BonusMode, type SortMode } from "@/components/vault";
-import { compareSites, chosenBonus } from "@/lib/order";
+import { compareSites } from "@/lib/order";
+import type { AccountRow } from "@/lib/parse-account";
 
-type Listed = CatalogSite | { domain: string; group: SiteGroup; addedAt: string };
+type Listed = ListedSite;
 
 const GROUP_LABEL: Record<SiteGroup, string> = {
   new: "New",
@@ -63,11 +63,6 @@ function bonusSortName(mode: BonusMode): string {
   return "Share";
 }
 
-function bonusOf(row: AccountOk, mode: BonusMode): BonusView | null {
-  if (mode === "none") return null;
-  return chosenBonus(row, mode);
-}
-
 export function Directory() {
   const { state, patch, markVisited, toggleMine } = useVault();
   const statusFn = useServerFn(checkSiteStatus);
@@ -91,16 +86,10 @@ export function Directory() {
     return map;
   }, [state.lastFetch]);
 
-  const sites = useMemo<Listed[]>(() => {
-    const map = new Map<string, Listed>();
-    for (const site of CATALOG) map.set(site.domain, site);
-    for (const site of state.custom) {
-      if (!map.has(site.domain)) {
-        map.set(site.domain, { domain: site.domain, group: "custom", addedAt: site.addedAt });
-      }
-    }
-    return [...map.values()];
-  }, [state.custom]);
+  const sites = useMemo<Listed[]>(
+    () => visibleSites(state),
+    [state],
+  );
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -184,57 +173,21 @@ export function Directory() {
     };
   }, [domainKey]);
 
-  function renderCard(site: Listed, compact = false) {
+  function renderCard(site: Listed, index: number) {
     const row = fetchMap.get(site.domain);
-    const status = statuses[site.domain] ?? "checking";
-    const bonus = row?.ok ? bonusOf(row, state.bonusMode) : null;
+    const account = row?.ok ? row : null;
     return (
-      <article
+      <AccountCard
         key={site.domain}
-        className={compact ? "site-card compact" : "site-card"}
-      >
-        <a
-          className="site-hit"
-          href={`https://${site.domain}/`}
-          target="_blank"
-          rel="noreferrer"
-          onClick={() => markVisited(site.domain)}
-        >
-          <SiteIcon domain={site.domain} />
-          <span className="site-copy">
-            <span className="site-domain">{site.domain}</span>
-            <span className={`site-meta ${status}`}>
-              <i />
-              {STATUS_LABEL[status]}
-              {site.addedAt ? ` · ${formatAdded(site.addedAt)}` : ""}
-            </span>
-            {state.wallets ? (
-              <span className={row && !row.ok ? "wallet-line warn" : "wallet-line"}>
-                {!row
-                  ? "No fetch yet"
-                  : row.ok
-                    ? `${money(row.cash)} ${row.cashWalletName}`
-                    : row.message}
-              </span>
-            ) : null}
-            {bonus ? (
-              <span className="wallet-line">
-                {bonus.name} {bonus.amountDisplay}
-              </span>
-            ) : null}
-          </span>
-        </a>
-        <button
-          type="button"
-          className={state.mine.includes(site.domain) ? "pin on" : "pin"}
-          aria-label={
-            state.mine.includes(site.domain) ? `Remove ${site.domain} from my accounts` : `Save ${site.domain}`
-          }
-          onClick={() => toggleMine(site.domain)}
-        >
-          <Bookmark size={16} fill={state.mine.includes(site.domain) ? "currentColor" : "none"} />
-        </button>
-      </article>
+        domain={site.domain}
+        rank={index + 1}
+        addedAt={site.addedAt}
+        status={statuses[site.domain] ?? "checking"}
+        account={account}
+        saved={state.mine.includes(site.domain)}
+        onVisit={() => markVisited(site.domain)}
+        onToggleSave={() => toggleMine(site.domain)}
+      />
     );
   }
 
@@ -329,7 +282,7 @@ export function Directory() {
                   <div className="top-col">
                     {filtered
                       .filter((site) => site.group === group)
-                      .map((site) => renderCard(site, true))}
+                      .map((site, index) => renderCard(site, index))}
                   </div>
                 </div>
               ))}
@@ -343,14 +296,14 @@ export function Directory() {
                 <h2 className="section-label">
                   {GROUP_LABEL[group]} · {items.length}
                 </h2>
-                <div className="cards">{items.map((site) => renderCard(site))}</div>
+                <div className="cards">{items.map((site, index) => renderCard(site, index))}</div>
               </section>
             );
           })}
         </>
       ) : (
         <div className={state.view === "one" ? "cards view-one" : state.view === "two" ? "cards view-two" : "cards"}>
-          {filtered.map((site) => renderCard(site, state.view !== "one"))}
+          {filtered.map((site, index) => renderCard(site, index))}
         </div>
       )}
 

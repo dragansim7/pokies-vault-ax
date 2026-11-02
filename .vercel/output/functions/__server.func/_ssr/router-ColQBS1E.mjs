@@ -3,7 +3,7 @@ import { S as require_jsx_runtime, Y as require_react, _ as lazyRouteComponent, 
 import { n as normalizeDomain, t as isPublicDomain } from "./domain-CILCWuBu.mjs";
 import { a as TriangleAlert } from "../_libs/lucide-react.mjs";
 import { a as union, i as string, n as number, r as object, t as literal } from "../_libs/zod.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/router-CvWpupvS.js
+//#region node_modules/.nitro/vite/services/ssr/assets/router-ColQBS1E.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 var __defProp = Object.defineProperty;
@@ -307,103 +307,21 @@ function PreviewHostBridge() {
 	}, [router]);
 	return null;
 }
-var THEMES = [
-	{
-		id: "vault",
-		name: "Vault",
-		hint: "Cyan, violet, pink",
-		bg: "#050507",
-		panel: "#0c0c0e",
-		panel2: "#141418",
-		fg: "#f5f5f7",
-		muted: "#92929e",
-		faint: "#6f6f79",
-		a: "#00e5ff",
-		b: "#7b5cff",
-		c: "#ff2fb0",
-		ink: "#070708"
-	},
-	{
-		id: "emerald",
-		name: "Emerald",
-		hint: "Mint and gold",
-		bg: "#06110c",
-		panel: "#0c1a14",
-		panel2: "#12241c",
-		fg: "#f3f7f4",
-		muted: "#8ea398",
-		faint: "#6d8074",
-		a: "#3dffc5",
-		b: "#1fa87a",
-		c: "#d6b25e",
-		ink: "#04110c"
-	},
-	{
-		id: "arctic",
-		name: "Arctic",
-		hint: "Ice and steel",
-		bg: "#070b12",
-		panel: "#101722",
-		panel2: "#172033",
-		fg: "#f4f7fb",
-		muted: "#93a0b5",
-		faint: "#6e7c90",
-		a: "#8fd6ff",
-		b: "#6aa6ff",
-		c: "#d7e4f5",
-		ink: "#05080e"
-	},
-	{
-		id: "ember",
-		name: "Ember",
-		hint: "Amber and copper",
-		bg: "#100806",
-		panel: "#1a100c",
-		panel2: "#261812",
-		fg: "#f8f3ef",
-		muted: "#b5a197",
-		faint: "#8a786c",
-		a: "#ffb15a",
-		b: "#ff6a3d",
-		c: "#ff4d6a",
-		ink: "#0c0604"
-	},
-	{
-		id: "royal",
-		name: "Royal",
-		hint: "Gold and violet",
-		bg: "#0a0812",
-		panel: "#141022",
-		panel2: "#1c1730",
-		fg: "#f6f4fb",
-		muted: "#a39bb8",
-		faint: "#7c748f",
-		a: "#e6c36a",
-		b: "#9b6bff",
-		c: "#f0a3ff",
-		ink: "#07060e"
-	},
-	{
-		id: "amber",
-		name: "Amber",
-		hint: "Full style · dark gold",
-		bg: "#070605",
-		panel: "#12100d",
-		panel2: "#1b1814",
-		fg: "#f4efe8",
-		muted: "#a89886",
-		faint: "#7d6e5e",
-		a: "#f6d7a2",
-		b: "#e0a04a",
-		c: "#8d5a22",
-		ink: "#0b0907"
+var INTEL_KEY = "pokies_vault_intel_v1";
+function domainsFromText(text) {
+	const out = [];
+	const seen = /* @__PURE__ */ new Set();
+	for (const line of text.split(/\r?\n/)) {
+		const cleaned = line.replace(/#.*/, "").trim();
+		if (!cleaned) continue;
+		for (const part of cleaned.split(/[\s,;]+/)) {
+			const domain = normalizeDomain(part);
+			if (!isPublicDomain(domain) || seen.has(domain)) continue;
+			seen.add(domain);
+			out.push(domain);
+		}
 	}
-];
-function isThemeId(value) {
-	return THEMES.some((theme) => theme.id === value);
-}
-function themeById(id) {
-	return THEMES.find((theme) => theme.id === id) ?? THEMES[0];
+	return out;
 }
 var CATALOG_0 = [
 	{
@@ -12834,6 +12752,124 @@ var CATALOG = [
 	...CATALOG_2,
 	...CATALOG_3
 ];
+function workingSites(custom, removed) {
+	const gone = new Set(removed);
+	const sites = [];
+	const seen = /* @__PURE__ */ new Set();
+	for (const site of CATALOG) {
+		if (gone.has(site.domain)) continue;
+		sites.push(site);
+		seen.add(site.domain);
+	}
+	for (const site of custom) {
+		if (!site?.domain || gone.has(site.domain) || seen.has(site.domain)) continue;
+		sites.push({
+			domain: site.domain,
+			group: "custom",
+			addedAt: site.addedAt
+		});
+		seen.add(site.domain);
+	}
+	return sites;
+}
+var THEMES = [
+	{
+		id: "vault",
+		name: "Vault",
+		hint: "Cyan, violet, pink",
+		bg: "#050507",
+		panel: "#0c0c0e",
+		panel2: "#141418",
+		fg: "#f5f5f7",
+		muted: "#92929e",
+		faint: "#6f6f79",
+		a: "#00e5ff",
+		b: "#7b5cff",
+		c: "#ff2fb0",
+		ink: "#070708"
+	},
+	{
+		id: "emerald",
+		name: "Emerald",
+		hint: "Mint and gold",
+		bg: "#06110c",
+		panel: "#0c1a14",
+		panel2: "#12241c",
+		fg: "#f3f7f4",
+		muted: "#8ea398",
+		faint: "#6d8074",
+		a: "#3dffc5",
+		b: "#1fa87a",
+		c: "#d6b25e",
+		ink: "#04110c"
+	},
+	{
+		id: "arctic",
+		name: "Arctic",
+		hint: "Ice and steel",
+		bg: "#070b12",
+		panel: "#101722",
+		panel2: "#172033",
+		fg: "#f4f7fb",
+		muted: "#93a0b5",
+		faint: "#6e7c90",
+		a: "#8fd6ff",
+		b: "#6aa6ff",
+		c: "#d7e4f5",
+		ink: "#05080e"
+	},
+	{
+		id: "ember",
+		name: "Ember",
+		hint: "Amber and copper",
+		bg: "#100806",
+		panel: "#1a100c",
+		panel2: "#261812",
+		fg: "#f8f3ef",
+		muted: "#b5a197",
+		faint: "#8a786c",
+		a: "#ffb15a",
+		b: "#ff6a3d",
+		c: "#ff4d6a",
+		ink: "#0c0604"
+	},
+	{
+		id: "royal",
+		name: "Royal",
+		hint: "Gold and violet",
+		bg: "#0a0812",
+		panel: "#141022",
+		panel2: "#1c1730",
+		fg: "#f6f4fb",
+		muted: "#a39bb8",
+		faint: "#7c748f",
+		a: "#e6c36a",
+		b: "#9b6bff",
+		c: "#f0a3ff",
+		ink: "#07060e"
+	},
+	{
+		id: "amber",
+		name: "Amber",
+		hint: "Full style · dark gold",
+		bg: "#070605",
+		panel: "#12100d",
+		panel2: "#1b1814",
+		fg: "#f4efe8",
+		muted: "#a89886",
+		faint: "#7d6e5e",
+		a: "#f6d7a2",
+		b: "#e0a04a",
+		c: "#8d5a22",
+		ink: "#0b0907"
+	}
+];
+function isThemeId(value) {
+	return THEMES.some((theme) => theme.id === value);
+}
+function themeById(id) {
+	return THEMES.find((theme) => theme.id === id) ?? THEMES[0];
+}
 var SORT_IDS = [
 	"default",
 	"az",
@@ -12929,6 +12965,7 @@ var EMPTY = {
 	visited: [],
 	mine: [],
 	custom: [],
+	removed: [],
 	phone: "",
 	password: "",
 	fallbacks: [
@@ -12988,6 +13025,7 @@ function load() {
 			visited: Array.isArray(parsed.visited) ? parsed.visited : [],
 			mine: Array.isArray(parsed.mine) ? parsed.mine : [],
 			custom: Array.isArray(parsed.custom) ? parsed.custom : [],
+			removed: Array.isArray(parsed.removed) ? Array.from(new Set(parsed.removed.map((item) => normalizeDomain(String(item))).filter(isPublicDomain))) : [],
 			fallbacks: Array.isArray(parsed.fallbacks) && parsed.fallbacks.length === 3 ? parsed.fallbacks : EMPTY.fallbacks,
 			logins: cleanLogins(parsed.logins),
 			sort: isSortMode(parsed.sort) ? parsed.sort : EMPTY.sort,
@@ -13123,10 +13161,12 @@ function VaultProvider({ children }) {
 				addedAt: (/* @__PURE__ */ new Date()).toISOString()
 			}, ...current.custom];
 			const mine = current.mine.includes(domain) ? current.mine : [...current.mine, domain];
+			const removed = current.removed.filter((item) => item !== domain);
 			const next = {
 				...current,
 				custom,
-				mine
+				mine,
+				removed
 			};
 			try {
 				localStorage.setItem(KEY, JSON.stringify(next));
@@ -13134,6 +13174,66 @@ function VaultProvider({ children }) {
 			return next;
 		});
 		return null;
+	}, []);
+	const addManaged = (0, import_react.useCallback)((raws) => {
+		const incoming = Array.from(new Set(raws.map((item) => normalizeDomain(item)).filter(isPublicDomain)));
+		if (!incoming.length) return 0;
+		const catalog = new Set(workingSites([], []).map((site) => site.domain));
+		const removed = new Set(state.removed);
+		const custom = [...state.custom];
+		const have = new Set(custom.map((item) => item.domain));
+		let added = 0;
+		for (const domain of incoming) {
+			if (removed.has(domain)) {
+				removed.delete(domain);
+				added += 1;
+				continue;
+			}
+			if (catalog.has(domain) || have.has(domain)) continue;
+			custom.unshift({
+				domain,
+				addedAt: (/* @__PURE__ */ new Date()).toISOString()
+			});
+			have.add(domain);
+			added += 1;
+		}
+		if (!added) return 0;
+		setState((current) => {
+			const next = {
+				...current,
+				custom,
+				removed: [...removed]
+			};
+			try {
+				localStorage.setItem(KEY, JSON.stringify(next));
+			} catch {}
+			return next;
+		});
+		return added;
+	}, [state.custom, state.removed]);
+	const removeManaged = (0, import_react.useCallback)((domains) => {
+		const drop = new Set(domains.map((item) => normalizeDomain(item)).filter(isPublicDomain));
+		if (!drop.size) return;
+		setState((current) => {
+			const removed = Array.from(/* @__PURE__ */ new Set([...current.removed, ...drop]));
+			const custom = current.custom.filter((item) => !drop.has(item.domain));
+			const mine = current.mine.filter((item) => !drop.has(item));
+			const lastFetch = current.lastFetch ? {
+				...current.lastFetch,
+				rows: current.lastFetch.rows.filter((row) => !drop.has(row.domain))
+			} : current.lastFetch;
+			const next = {
+				...current,
+				removed,
+				custom,
+				mine,
+				lastFetch
+			};
+			try {
+				localStorage.setItem(KEY, JSON.stringify(next));
+			} catch {}
+			return next;
+		});
 	}, []);
 	const saveFetch = (0, import_react.useCallback)((rows) => {
 		const lastFetch = {
@@ -13155,6 +13255,9 @@ function VaultProvider({ children }) {
 		});
 	}, []);
 	const clearAll = (0, import_react.useCallback)(() => {
+		try {
+			localStorage.removeItem(INTEL_KEY);
+		} catch {}
 		persist(EMPTY);
 	}, [persist]);
 	const api = (0, import_react.useMemo)(() => ({
@@ -13165,6 +13268,8 @@ function VaultProvider({ children }) {
 		markVisited,
 		toggleMine,
 		addDomain,
+		addManaged,
+		removeManaged,
 		rememberAccount,
 		rememberLogins,
 		saveFetch,
@@ -13177,6 +13282,8 @@ function VaultProvider({ children }) {
 		markVisited,
 		toggleMine,
 		addDomain,
+		addManaged,
+		removeManaged,
 		rememberAccount,
 		rememberLogins,
 		saveFetch,
@@ -13192,8 +13299,8 @@ function useVault() {
 	if (!ctx) throw new Error("Vault missing");
 	return ctx;
 }
-var styles_default = "/assets/styles-DQNJ1UEK.css";
-var Route$2 = createRootRoute({
+var styles_default = "/assets/styles-Bx6EM4Ej.css";
+var Route$3 = createRootRoute({
 	head: () => ({
 		meta: [
 			{ charSet: "utf-8" },
@@ -13247,23 +13354,30 @@ var Route$2 = createRootRoute({
 		] })]
 	})
 });
-var $$splitComponentImporter$1 = () => import("./routes-AGfTOu65.mjs");
-var Route$1 = createFileRoute("/")({ component: lazyRouteComponent($$splitComponentImporter$1, "component") });
-var $$splitComponentImporter = () => import("./fetch-BGa0KRHv.mjs");
-var Route = createFileRoute("/fetch")({ component: lazyRouteComponent($$splitComponentImporter, "component") });
+var $$splitComponentImporter$2 = () => import("./routes-ClY-vDJc.mjs");
+var Route$2 = createFileRoute("/")({ component: lazyRouteComponent($$splitComponentImporter$2, "component") });
+var $$splitComponentImporter$1 = () => import("./fetch-DciGfzDy.mjs");
+var Route$1 = createFileRoute("/fetch")({ component: lazyRouteComponent($$splitComponentImporter$1, "component") });
+var $$splitComponentImporter = () => import("./intel-Dy5TNPL5.mjs");
+var Route = createFileRoute("/intel")({ component: lazyRouteComponent($$splitComponentImporter, "component") });
 var rootRouteChildren = {
-	IndexRoute: Route$1.update({
+	IndexRoute: Route$2.update({
 		id: "/",
 		path: "/",
-		getParentRoute: () => Route$2
+		getParentRoute: () => Route$3
 	}),
-	FetchRoute: Route.update({
+	FetchRoute: Route$1.update({
 		id: "/fetch",
 		path: "/fetch",
-		getParentRoute: () => Route$2
+		getParentRoute: () => Route$3
+	}),
+	IntelRoute: Route.update({
+		id: "/intel",
+		path: "/intel",
+		getParentRoute: () => Route$3
 	})
 };
-var routeTree = Route$2._addFileChildren(rootRouteChildren)._addFileTypes();
+var routeTree = Route$3._addFileChildren(rootRouteChildren)._addFileTypes();
 var router_exports = /* @__PURE__ */ __exportAll({ getRouter: () => getRouter });
 function getRouter() {
 	return createRouter({
@@ -13272,4 +13386,4 @@ function getRouter() {
 	});
 }
 //#endregion
-export { compareSites as a, chosenBonus as i, useVault as n, CATALOG as o, catalogMeta as r, THEMES as s, router_exports as t };
+export { compareSites as a, INTEL_KEY as c, chosenBonus as i, domainsFromText as l, useVault as n, THEMES as o, catalogMeta as r, workingSites as s, router_exports as t };

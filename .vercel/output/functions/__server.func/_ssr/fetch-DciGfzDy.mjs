@@ -1,10 +1,11 @@
 import { i as __toESM } from "../_runtime.mjs";
 import { S as require_jsx_runtime, Y as require_react, b as Link } from "../_libs/@tanstack/react-router+[...].mjs";
 import { n as normalizeDomain, t as isPublicDomain } from "./domain-CILCWuBu.mjs";
-import { f as LoaderCircle, h as ChevronLeft, m as EyeOff, p as Eye } from "../_libs/lucide-react.mjs";
-import { a as compareSites, i as chosenBonus, n as useVault, o as CATALOG, r as catalogMeta } from "./router-CvWpupvS.mjs";
-import { a as fetchCasinoBatchFn, c as useServerFn, n as SiteIcon, o as formatAdded, s as money, t as AppFrame } from "./format-DwFnxZeC.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/fetch-BGa0KRHv.js
+import { g as ChevronLeft, h as EyeOff, m as Eye, p as LoaderCircle } from "../_libs/lucide-react.mjs";
+import { a as compareSites, i as chosenBonus, n as useVault, r as catalogMeta, s as workingSites } from "./router-ColQBS1E.mjs";
+import { a as useServerFn, i as fetchCasinoBatchFn, t as AppFrame } from "./casino.functions-BDU87UJW.mjs";
+import { n as formatAdded, r as money, t as SiteIcon } from "./format-D9-wnKzf.mjs";
+//#region node_modules/.nitro/vite/services/ssr/assets/fetch-DciGfzDy.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 var PAGE = 12;
@@ -389,10 +390,11 @@ function Fetcher() {
 	const stopRef = (0, import_react.useRef)(null);
 	const rowsRef = (0, import_react.useRef)(rows);
 	rowsRef.current = rows;
+	const sites = (0, import_react.useMemo)(() => workingSites(state.custom, state.removed), [state.custom, state.removed]);
 	(0, import_react.useEffect)(() => {
 		const saved = readRun();
-		if (saved && saved.done.length < CATALOG.length) setPendingRun(saved);
-	}, []);
+		if (saved && saved.done.length < sites.length) setPendingRun(saved);
+	}, [sites.length]);
 	const creds = (0, import_react.useMemo)(() => {
 		const list = [usableLogin({
 			phone: state.phone,
@@ -446,7 +448,7 @@ function Fetcher() {
 		stopRef.current = controller;
 		const collected = resumeFrom ? [...resumeFrom.rows] : [];
 		const done = resumeFrom ? [...resumeFrom.done] : [];
-		const total = resumeFrom ? CATALOG.length : unique.length - unseen;
+		const total = resumeFrom ? sites.length : unique.length - unseen;
 		setRunning(true);
 		setShowErrors(false);
 		setDiffs([]);
@@ -456,7 +458,7 @@ function Fetcher() {
 			done: done.length,
 			total
 		});
-		setStatus(resumeFrom ? `Resuming ${done.length} of ${CATALOG.length}…` : unique.length === 1 ? `Checking ${unique[0]}…` : unseen ? `Checking ${total} sites that already have a saved login…` : `Checking ${unique.length} sites…`);
+		setStatus(resumeFrom ? `Resuming ${done.length} of ${sites.length}…` : unique.length === 1 ? `Checking ${unique[0]}…` : unseen ? `Checking ${total} sites that already have a saved login…` : `Checking ${unique.length} sites…`);
 		const publish = (batchRows, loginNotes) => {
 			rememberLogins(loginNotes);
 			for (const row of batchRows) {
@@ -478,7 +480,7 @@ function Fetcher() {
 				rows: snapshot
 			};
 			writeRun(checkpoint);
-			setPendingRun(done.length < CATALOG.length ? checkpoint : null);
+			setPendingRun(done.length < sites.length ? checkpoint : null);
 		};
 		let cursor = 0;
 		const worker = async () => {
@@ -552,7 +554,7 @@ function Fetcher() {
 		const finalRows = [...collected].sort((a, b) => a.domain.localeCompare(b.domain));
 		setRows(finalRows);
 		saveFetch(finalRows);
-		if (!stopped && done.length >= CATALOG.length) {
+		if (!stopped && done.length >= sites.length) {
 			try {
 				localStorage.removeItem(RUN_KEY);
 			} catch {}
@@ -570,7 +572,8 @@ function Fetcher() {
 		setStatus(stopped ? "Stopped. Successful sign-ins stay in My accounts." : `Done. ${signedIn} of ${finalRows.length} signed in. Only those are kept as your accounts.`);
 		setRunning(false);
 	}
-	const mineTargets = state.mine.length ? state.mine : CATALOG.filter((site) => state.visited.includes(site.domain)).map((site) => site.domain);
+	const allowed = new Set(sites.map((site) => site.domain));
+	const mineTargets = (state.mine.length ? state.mine : sites.filter((site) => state.visited.includes(site.domain)).map((site) => site.domain)).filter((domain) => allowed.has(domain));
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
 		className: "stack",
 		children: [
@@ -742,13 +745,13 @@ function Fetcher() {
 						className: "btn",
 						onClick: () => {
 							const done = new Set(pendingRun.done);
-							run(CATALOG.map((site) => site.domain).filter((domain) => !done.has(domain)), pendingRun);
+							run(sites.map((site) => site.domain).filter((domain) => !done.has(domain)), pendingRun);
 						},
 						children: [
 							"Resume scan (",
 							pendingRun.done.length,
 							" of ",
-							CATALOG.length,
+							sites.length,
 							")"
 						]
 					}) : null,
@@ -884,7 +887,7 @@ function Fetcher() {
 								className: "btn btn-grad",
 								onClick: () => {
 									setConfirmScan(false);
-									run(CATALOG.map((site) => site.domain));
+									run(sites.map((site) => site.domain));
 								},
 								children: "Scan my login"
 							})]

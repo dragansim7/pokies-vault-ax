@@ -1,9 +1,9 @@
 import { i as __toESM } from "../_runtime.mjs";
 import { G as isRedirect, S as require_jsx_runtime, Y as require_react, b as Link, p as useRouterState, x as useRouter } from "../_libs/@tanstack/react-router+[...].mjs";
 import { n as TSS_SERVER_FUNCTION, r as getServerFnById, t as createServerFn } from "./ssr.mjs";
-import { d as Menu, i as UserRound, l as Plus, n as X, o as Trash2, s as Shield, t as Zap, u as Palette } from "../_libs/lucide-react.mjs";
-import { n as useVault, s as THEMES } from "./router-CvWpupvS.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/format-DwFnxZeC.js
+import { d as Palette, f as Menu, i as UserRound, l as Radar, n as X, o as Trash2, s as Shield, t as Zap, u as Plus } from "../_libs/lucide-react.mjs";
+import { n as useVault, o as THEMES } from "./router-ColQBS1E.mjs";
+//#region node_modules/.nitro/vite/services/ssr/assets/casino.functions-BDU87UJW.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 function useServerFn(serverFn) {
@@ -118,21 +118,30 @@ function AppFrame({ children }) {
 						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 							className: "drawer-tabs",
 							role: "tablist",
-							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-								type: "button",
-								role: "tab",
-								"aria-selected": tab === "list",
-								className: tab === "list" ? "drawer-tab on" : "drawer-tab",
-								onClick: () => setTab("list"),
-								children: "List"
-							}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
-								type: "button",
-								role: "tab",
-								"aria-selected": tab === "theme",
-								className: tab === "theme" ? "drawer-tab on" : "drawer-tab",
-								onClick: () => setTab("theme"),
-								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Palette, { size: 14 }), "Theme"]
-							})]
+							children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+									type: "button",
+									role: "tab",
+									"aria-selected": tab === "list",
+									className: tab === "list" ? "drawer-tab on" : "drawer-tab",
+									onClick: () => setTab("list"),
+									children: "List"
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Link, {
+									to: "/intel",
+									className: path === "/intel" ? "drawer-tab on" : "drawer-tab",
+									onClick: () => setMenu(false),
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Radar, { size: 14 }), "Domain Intel"]
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+									type: "button",
+									role: "tab",
+									"aria-selected": tab === "theme",
+									className: tab === "theme" ? "drawer-tab on" : "drawer-tab",
+									onClick: () => setTab("theme"),
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Palette, { size: 14 }), "Theme"]
+								})
+							]
 						}),
 						tab === "theme" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 							className: "theme-list",
@@ -183,7 +192,7 @@ function AppFrame({ children }) {
 								type: "button",
 								className: "drawer-item",
 								onClick: () => {
-									if (window.confirm("Clear saved sites, visits, and the password stored on this device?")) {
+									if (window.confirm("Clear saved sites, domain intel, visits, and the password stored on this device?")) {
 										clearAll();
 										setMenu(false);
 									}
@@ -242,19 +251,6 @@ function AppFrame({ children }) {
 		]
 	});
 }
-function SiteIcon({ domain }) {
-	const [src, setSrc] = (0, import_react.useState)(`https://intel.bestpokieslist.online/favicon/${domain}`);
-	(0, import_react.useEffect)(() => setSrc(`https://intel.bestpokieslist.online/favicon/${domain}`), [domain]);
-	return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", {
-		className: "site-icon",
-		src,
-		alt: "",
-		referrerPolicy: "no-referrer",
-		loading: "lazy",
-		decoding: "async",
-		onError: () => setSrc((current) => current === "/site-fallback.jpg" ? current : "/site-fallback.jpg")
-	});
-}
 var createSsrRpc = (functionId) => {
 	const url = "/_serverFn/" + functionId;
 	const serverFnMeta = { id: functionId };
@@ -271,30 +267,5 @@ createServerFn({ method: "POST" }).validator((data) => data).handler(createSsrRp
 var fetchCasinoBatchFn = createServerFn({ method: "POST" }).validator((data) => data).handler(createSsrRpc("461c07027b2a8c58a6fe2f0a00682e43be45789d096410e713e3e5b3f4767738"));
 var fetchAllStatusesFn = createServerFn({ method: "POST" }).validator((data) => data ?? {}).handler(createSsrRpc("bbaccc3e2239274bbee08332c5f8909ed44347b3bf93b9b721830ca8434ad3bf"));
 var checkSiteStatus = createServerFn({ method: "POST" }).validator((data) => data).handler(createSsrRpc("74839dc983bbaacaaaed2f59d289f93c284acf8e34a8e5f8f2b0a8b1a890e640"));
-function money(amount) {
-	const value = Number(amount ?? 0);
-	if (!Number.isFinite(value)) return "$0.00";
-	return new Intl.NumberFormat("en-AU", {
-		style: "currency",
-		currency: "AUD",
-		maximumFractionDigits: 2
-	}).format(value);
-}
-function formatAdded(value) {
-	if (!value) return "";
-	const date = new Date(value);
-	if (Number.isNaN(date.getTime())) return "";
-	return `${new Intl.DateTimeFormat("en-AU", {
-		timeZone: "Australia/Melbourne",
-		day: "2-digit",
-		month: "2-digit",
-		year: "numeric"
-	}).format(date)} · ${new Intl.DateTimeFormat("en-AU", {
-		timeZone: "Australia/Melbourne",
-		hour: "numeric",
-		minute: "2-digit",
-		hour12: true
-	}).format(date)}`;
-}
 //#endregion
-export { fetchCasinoBatchFn as a, useServerFn as c, fetchAllStatusesFn as i, SiteIcon as n, formatAdded as o, checkSiteStatus as r, money as s, AppFrame as t };
+export { useServerFn as a, fetchCasinoBatchFn as i, checkSiteStatus as n, fetchAllStatusesFn as r, AppFrame as t };

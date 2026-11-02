@@ -9,10 +9,24 @@ import {
 } from "react";
 import type { AccountRow } from "@/lib/parse-account";
 import { isPublicDomain, normalizeDomain } from "@/lib/domain";
+import { clearOwnedList, loadOwnedList, saveOwnedList, siteRecord } from "@/lib/domain-list";
+import { INTEL_KEY } from "@/lib/intel-domains";
+import { workingSites, type ListedSite } from "@/lib/working-sites";
 import { isThemeId, themeById, type ThemeId } from "@/lib/themes";
 import { isSortMode } from "@/lib/order";
 
 const KEY = "pokies_vault_v1";
+const LIST_ERROR = "The domain list could not be saved on this device, so that change was not kept.";
+
+function writeVault(state: VaultState) {
+  const { listOwned: _listOwned, sites: _sites, ...rest } = state;
+  localStorage.setItem(KEY, JSON.stringify(rest));
+}
+
+function withSavedList(current: VaultState, sites: ListedSite[]): VaultState | null {
+  if (!saveOwnedList(sites)) return null;
+  return { ...current, listOwned: true, sites };
+}
 
 export type ViewMode = "default" | "one" | "two";
 export type SortMode =
@@ -44,6 +58,9 @@ export type VaultState = {
   visited: string[];
   mine: string[];
   custom: { domain: string; addedAt: string }[];
+  removed: string[];
+  listOwned: boolean;
+  sites: ListedSite[];
   phone: string;
   password: string;
   fallbacks: FallbackCred[];
@@ -63,6 +80,9 @@ const EMPTY: VaultState = {
   visited: [],
   mine: [],
   custom: [],
+  removed: [],
+  listOwned: false,
+  sites: [],
   phone: "",
   password: "",
   fallbacks: [
@@ -113,6 +133,17 @@ function load(): VaultState {
       visited: Array.isArray(parsed.visited) ? parsed.visited : [],
       mine: Array.isArray(parsed.mine) ? parsed.mine : [],
       custom: Array.isArray(parsed.custom) ? parsed.custom : [],
+      removed: Array.isArray(parsed.removed)
+        ? Array.from(
+            new Set(
+              parsed.removed
+                .map((item) => normalizeDomain(String(item)))
+                .filter(isPublicDomain),
+            ),
+          )
+        : [],
+      listOwned: false,
+      sites: [],
       fallbacks:
         Array.isArray(parsed.fallbacks) && parsed.fallbacks.length === 3
           ? parsed.fallbacks
@@ -144,6 +175,8 @@ type VaultApi = {
   markVisited: (domain: string) => void;
   toggleMine: (domain: string) => void;
   addDomain: (raw: string) => string | null;
+  addManaged: (raws: string[]) => { added: number; error: string | null };
+  removeManaged: (domains: string[]) => string | null;
   rememberAccount: (domain: string) => void;
   rememberLogins: (updates: { domain: string; login: FallbackCred | null }[]) => void;
   saveFetch: (rows: AccountRow[]) => void;
@@ -157,7 +190,16 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    setState(load());
+    const saved = load();
+    const owned = loadOwnedList();
+    if (owned) {
+      setState({ ...saved, listOwned: true, sites: owned });
+    } else if (saved.removed.length || saved.custom.length) {
+      const sites = workingSites(saved.custom, saved.removed);
+      setState(saveOwnedList(sites) ? { ...saved, listOwned: true, sites } : saved);
+    } else {
+      setState(saved);
+    }
     setReady(true);
   }, []);
 
@@ -170,7 +212,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const persist = useCallback((next: VaultState) => {
     setState(next);
     try {
-      localStorage.setItem(KEY, JSON.stringify(next));
+      writeVault(next);
     } catch {
       /* ignore quota */
     }
@@ -181,7 +223,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       setState((current) => {
         const next = { ...current, ...partial };
         try {
-          localStorage.setItem(KEY, JSON.stringify(next));
+          writeVault(next);
         } catch {
           /* ignore */
         }
@@ -196,7 +238,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       if (current.visited.includes(domain)) return current;
       const next = { ...current, visited: [...current.visited, domain] };
       try {
-        localStorage.setItem(KEY, JSON.stringify(next));
+        writeVault(next);
       } catch {
         /* ignore */
       }
@@ -211,7 +253,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         : [...current.visited, domain];
       const next = { ...current, visited };
       try {
-        localStorage.setItem(KEY, JSON.stringify(next));
+        writeVault(next);
       } catch {
         /* ignore */
       }
@@ -226,7 +268,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         : [...current.mine, domain];
       const next = { ...current, mine };
       try {
-        localStorage.setItem(KEY, JSON.stringify(next));
+        writeVault(next);
       } catch {
         /* ignore */
       }
@@ -239,7 +281,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       if (current.mine.includes(domain)) return current;
       const next = { ...current, mine: [...current.mine, domain] };
       try {
-        localStorage.setItem(KEY, JSON.stringify(next));
+        writeVault(next);
       } catch {
         /* ignore */
       }
@@ -271,7 +313,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       if (!changed) return current;
       const next = { ...current, logins };
       try {
-        localStorage.setItem(KEY, JSON.stringify(next));
+        writeVault(next);
       } catch {
         /* ignore */
       }
@@ -282,20 +324,89 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const addDomain = useCallback((raw: string) => {
     const domain = normalizeDomain(raw);
     if (!isPublicDomain(domain)) return "Enter a domain like 9au.com";
+    let error: string | null = null;
     setState((current) => {
-      const custom = current.custom.some((item) => item.domain === domain)
-        ? current.custom
-        : [{ domain, addedAt: new Date().toISOString() }, ...current.custom];
-      const mine = current.mine.includes(domain) ? current.mine : [...current.mine, domain];
-      const next = { ...current, custom, mine };
+      const base = current.listOwned ? current.sites : workingSites(current.custom, current.removed);
+      const exists = base.some((site) => site.domain === domain);
+      let next = current;
+      if (!exists) {
+        const saved = withSavedList(current, [siteRecord(domain, new Date().toISOString()), ...base]);
+        if (!saved) {
+          error = LIST_ERROR;
+          return current;
+        }
+        next = saved;
+      }
+      const custom = next.custom.some((item) => item.domain === domain)
+        ? next.custom
+        : [{ domain, addedAt: new Date().toISOString() }, ...next.custom];
+      const mine = next.mine.includes(domain) ? next.mine : [...next.mine, domain];
+      const removed = next.removed.filter((item) => item !== domain);
+      const stored = { ...next, custom, mine, removed };
       try {
-        localStorage.setItem(KEY, JSON.stringify(next));
+        writeVault(stored);
       } catch {
-        /* ignore */
+        /* the domain list is already in its own save */
+      }
+      return stored;
+    });
+    return error;
+  }, []);
+
+  const addManaged = useCallback((raws: string[]) => {
+    const incoming = Array.from(new Set(raws.map((item) => normalizeDomain(item)).filter(isPublicDomain)));
+    if (!incoming.length) return { added: 0, error: null };
+    let added = 0;
+    let error: string | null = null;
+    setState((current) => {
+      const base = current.listOwned ? current.sites : workingSites(current.custom, current.removed);
+      const have = new Set(base.map((site) => site.domain));
+      const sites = [...base];
+      const stamp = new Date().toISOString();
+      for (const domain of incoming) {
+        if (have.has(domain)) continue;
+        sites.push(siteRecord(domain, stamp));
+        have.add(domain);
+        added += 1;
+      }
+      if (!added) return current;
+      const saved = withSavedList(current, sites);
+      if (!saved) {
+        error = LIST_ERROR;
+        added = 0;
+        return current;
+      }
+      return saved;
+    });
+    return { added, error };
+  }, []);
+
+  const removeManaged = useCallback((domains: string[]) => {
+    const drop = new Set(domains.map((item) => normalizeDomain(item)).filter(isPublicDomain));
+    if (!drop.size) return null;
+    let error: string | null = null;
+    setState((current) => {
+      const base = current.listOwned ? current.sites : workingSites(current.custom, current.removed);
+      const sites = base.filter((site) => !drop.has(site.domain));
+      const saved = withSavedList(current, sites);
+      if (!saved) {
+        error = LIST_ERROR;
+        return current;
+      }
+      const custom = current.custom.filter((item) => !drop.has(item.domain));
+      const mine = current.mine.filter((item) => !drop.has(item));
+      const lastFetch = current.lastFetch
+        ? { ...current.lastFetch, rows: current.lastFetch.rows.filter((row) => !drop.has(row.domain)) }
+        : current.lastFetch;
+      const next = { ...saved, custom, mine, lastFetch };
+      try {
+        writeVault(next);
+      } catch {
+        /* domain list already saved separately */
       }
       return next;
     });
-    return null;
+    return error;
   }, []);
 
   const saveFetch = useCallback((rows: AccountRow[]) => {
@@ -305,7 +416,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       const mine = Array.from(new Set([...current.mine, ...found]));
       const next = { ...current, lastFetch, mine };
       try {
-        localStorage.setItem(KEY, JSON.stringify(next));
+        writeVault(next);
       } catch {
         /* ignore */
       }
@@ -314,6 +425,12 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const clearAll = useCallback(() => {
+    clearOwnedList();
+    try {
+      localStorage.removeItem(INTEL_KEY);
+    } catch {
+      /* ignore */
+    }
     persist(EMPTY);
   }, [persist]);
 
@@ -326,6 +443,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       markVisited,
       toggleMine,
       addDomain,
+      addManaged,
+      removeManaged,
       rememberAccount,
       rememberLogins,
       saveFetch,
@@ -339,6 +458,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       markVisited,
       toggleMine,
       addDomain,
+      addManaged,
+      removeManaged,
       rememberAccount,
       rememberLogins,
       saveFetch,

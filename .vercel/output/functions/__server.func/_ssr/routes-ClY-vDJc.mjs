@@ -1,9 +1,10 @@
 import { i as __toESM } from "../_runtime.mjs";
 import { S as require_jsx_runtime, Y as require_react } from "../_libs/@tanstack/react-router+[...].mjs";
-import { _ as ArrowUpDown, c as Search, g as Bookmark, n as X, p as Eye, r as Wallet } from "../_libs/lucide-react.mjs";
-import { a as compareSites, i as chosenBonus, n as useVault, o as CATALOG } from "./router-CvWpupvS.mjs";
-import { c as useServerFn, i as fetchAllStatusesFn, n as SiteIcon, o as formatAdded, r as checkSiteStatus, s as money, t as AppFrame } from "./format-DwFnxZeC.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/routes-AGfTOu65.js
+import { _ as Bookmark, c as Search, m as Eye, n as X, r as Wallet, v as ArrowUpDown } from "../_libs/lucide-react.mjs";
+import { a as compareSites, i as chosenBonus, n as useVault, s as workingSites } from "./router-ColQBS1E.mjs";
+import { a as useServerFn, n as checkSiteStatus, r as fetchAllStatusesFn, t as AppFrame } from "./casino.functions-BDU87UJW.mjs";
+import { n as formatAdded, r as money, t as SiteIcon } from "./format-D9-wnKzf.mjs";
+//#region node_modules/.nitro/vite/services/ssr/assets/routes-ClY-vDJc.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 var GROUP_LABEL = {
@@ -75,16 +76,7 @@ function Directory() {
 		for (const row of state.lastFetch?.rows ?? []) map.set(row.domain, row);
 		return map;
 	}, [state.lastFetch]);
-	const sites = (0, import_react.useMemo)(() => {
-		const map = /* @__PURE__ */ new Map();
-		for (const site of CATALOG) map.set(site.domain, site);
-		for (const site of state.custom) if (!map.has(site.domain)) map.set(site.domain, {
-			domain: site.domain,
-			group: "custom",
-			addedAt: site.addedAt
-		});
-		return [...map.values()];
-	}, [state.custom]);
+	const sites = (0, import_react.useMemo)(() => workingSites(state.custom, state.removed), [state.custom, state.removed]);
 	const filtered = (0, import_react.useMemo)(() => {
 		const q = query.trim().toLowerCase();
 		let list = sites.filter((site) => {

@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Menu, Palette, Plus, Shield, Trash2, UserRound, X, Zap } from "lucide-react";
+import { Menu, Palette, Plus, Radar, Shield, Trash2, UserRound, X, Zap } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { useVault } from "@/components/vault";
 import { THEMES, type ThemeId } from "@/lib/themes";
@@ -91,6 +91,14 @@ export function AppFrame({ children }: { children: ReactNode }) {
               >
                 List
               </button>
+              <Link
+                to="/intel"
+                className={path === "/intel" ? "drawer-tab on" : "drawer-tab"}
+                onClick={() => setMenu(false)}
+              >
+                <Radar size={14} />
+                Domain Intel
+              </Link>
               <button
                 type="button"
                 role="tab"
@@ -170,7 +178,7 @@ export function AppFrame({ children }: { children: ReactNode }) {
               type="button"
               className="drawer-item"
               onClick={() => {
-                if (window.confirm("Clear saved sites, visits, and the password stored on this device?")) {
+                if (window.confirm("Clear saved sites, domain intel, visits, and the password stored on this device?")) {
                   clearAll();
                   setMenu(false);
                 }

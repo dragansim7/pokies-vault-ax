@@ -2,14 +2,15 @@ import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { ChevronLeft, Eye, EyeOff, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CATALOG } from "@/data/sites";
-import { useVault, type AttentionMark, type BonusMode, type FallbackCred } from "@/components/vault";
+import { visibleSites } from "@/lib/working-sites";
+import { useVault, type AttentionMark, type FallbackCred } from "@/components/vault";
 import { SiteIcon } from "@/components/site-icon";
+import { AccountCard } from "@/components/account-card";
 import { fetchCasinoBatchFn } from "@/lib/casino.functions";
 import { isPublicDomain, normalizeDomain } from "@/lib/domain";
 import { money, formatAdded } from "@/lib/format";
-import { catalogMeta, chosenBonus, compareSites } from "@/lib/order";
-import type { AccountCode, AccountErr, AccountOk, AccountRow, BonusView } from "@/lib/parse-account";
+import { catalogMeta, compareSites } from "@/lib/order";
+import type { AccountCode, AccountErr, AccountOk, AccountRow } from "@/lib/parse-account";
 
 const PAGE = 12;
 const BATCH = 10;
@@ -82,7 +83,9 @@ function planBatches(domains: string[], form: FallbackCred[], saved: Record<stri
   return { batches, unseen: form.length ? 0 : fresh.length };
 }
 
-const TONES = ["tone-0", "tone-1", "tone-2", "tone-3", "tone-4"] as const;
+function cents(amount: number): number {
+  return Math.round(amount * 100) / 100;
+}
 
 type MoneyBox = { label: string; amount: number; kind: "wallet" | "promo" };
 
@@ -93,10 +96,6 @@ type ChangeNote = {
   from: number | null;
   to: number | null;
 };
-
-function cents(amount: number): number {
-  return Math.round(amount * 100) / 100;
-}
 
 function boxesOf(row: AccountOk): MoneyBox[] {
   const wallets = row.wallets.filter((wallet) => wallet.balance > 0.001);
@@ -174,45 +173,7 @@ function deltaClass(note: ChangeNote): string {
   return "delta";
 }
 
-function ResultCard({ row, bonus }: { row: AccountOk; bonus: BonusView | null }) {
-  const boxes = boxesOf(row);
-  const total = totalsOf(row).total;
-  return (
-    <article className="result-card">
-      <div className="result-head">
-        <span className="result-title">
-          <SiteIcon domain={row.domain} />
-          <strong>{row.domain}</strong>
-        </span>
-        <span className="result-side">
-          {total > 0 ? <b>{money(total)}</b> : null}
-          <a href={`https://${row.domain}/`} target="_blank" rel="noreferrer">
-            Open
-          </a>
-        </span>
-      </div>
-      {bonus ? (
-        <p className="hint">
-          {bonus.name} {bonus.amountDisplay}
-        </p>
-      ) : null}
-      {boxes.length ? (
-        <div className="promo-stack">
-          {boxes.map((box, index) => (
-            <div className={`promo-box ${TONES[index % TONES.length]}`} key={`${box.kind}-${box.label}-${index}`}>
-              <span>{box.label}</span>
-              <b>{money(box.amount)}</b>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <p className="hint">No balance or claimable promo.</p>
-      )}
-    </article>
-  );
-}
-
-function PageList({ rows, bonusMode }: { rows: AccountOk[]; bonusMode: BonusMode }) {
+function PageList({ rows }: { rows: AccountOk[] }) {
   const [page, setPage] = useState(0);
   const pages = Math.max(1, Math.ceil(rows.length / PAGE));
   const safe = Math.min(page, pages - 1);
@@ -238,11 +199,13 @@ function PageList({ rows, bonusMode }: { rows: AccountOk[]; bonusMode: BonusMode
         </div>
       ) : null}
       <div className="stack">
-        {slice.map((row) => (
-          <ResultCard
+        {slice.map((row, index) => (
+          <AccountCard
             key={row.domain}
-            row={row}
-            bonus={bonusMode === "none" ? null : chosenBonus(row, bonusMode)}
+            domain={row.domain}
+            rank={safe * PAGE + index + 1}
+            addedAt={catalogMeta(row.domain).addedAt}
+            account={row}
           />
         ))}
       </div>
@@ -363,10 +326,15 @@ export function Fetcher() {
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
 
+  const sites = useMemo(
+    () => visibleSites(state),
+    [state],
+  );
+
   useEffect(() => {
     const saved = readRun();
-    if (saved && saved.done.length < CATALOG.length) setPendingRun(saved);
-  }, []);
+    if (saved && saved.done.length < sites.length) setPendingRun(saved);
+  }, [sites.length]);
 
   const creds = useMemo(() => {
     const list = [usableLogin({ phone: state.phone, password: state.password })];
@@ -415,7 +383,7 @@ export function Fetcher() {
     stopRef.current = controller;
     const collected: AccountRow[] = resumeFrom ? [...resumeFrom.rows] : [];
     const done = resumeFrom ? [...resumeFrom.done] : [];
-    const total = resumeFrom ? CATALOG.length : unique.length - unseen;
+    const total = resumeFrom ? sites.length : unique.length - unseen;
     setRunning(true);
     setShowErrors(false);
     setDiffs([]);
@@ -424,7 +392,7 @@ export function Fetcher() {
     setProgress({ done: done.length, total });
     setStatus(
       resumeFrom
-        ? `Resuming ${done.length} of ${CATALOG.length}…`
+        ? `Resuming ${done.length} of ${sites.length}…`
         : unique.length === 1
           ? `Checking ${unique[0]}…`
           : unseen
@@ -446,7 +414,7 @@ export function Fetcher() {
       setProgress({ done: done.length, total });
       const checkpoint = { at: Date.now(), done: [...done], rows: snapshot };
       writeRun(checkpoint);
-      setPendingRun(done.length < CATALOG.length ? checkpoint : null);
+      setPendingRun(done.length < sites.length ? checkpoint : null);
     };
 
     let cursor = 0;
@@ -508,7 +476,7 @@ export function Fetcher() {
     const finalRows = [...collected].sort((a, b) => a.domain.localeCompare(b.domain));
     setRows(finalRows);
     saveFetch(finalRows);
-    if (!stopped && done.length >= CATALOG.length) {
+    if (!stopped && done.length >= sites.length) {
       try {
         localStorage.removeItem(RUN_KEY);
       } catch {
@@ -537,9 +505,11 @@ export function Fetcher() {
     setRunning(false);
   }
 
-  const mineTargets = state.mine.length
+  const allowed = new Set(sites.map((site) => site.domain));
+  const mineTargets = (state.mine.length
     ? state.mine
-    : CATALOG.filter((site) => state.visited.includes(site.domain)).map((site) => site.domain);
+    : sites.filter((site) => state.visited.includes(site.domain)).map((site) => site.domain)
+  ).filter((domain) => allowed.has(domain));
 
   return (
     <section className="stack">
@@ -683,11 +653,11 @@ export function Fetcher() {
             className="btn"
             onClick={() => {
               const done = new Set(pendingRun.done);
-              const remaining = CATALOG.map((site) => site.domain).filter((domain) => !done.has(domain));
+              const remaining = sites.map((site) => site.domain).filter((domain) => !done.has(domain));
               void run(remaining, pendingRun);
             }}
           >
-            Resume scan ({pendingRun.done.length} of {CATALOG.length})
+            Resume scan ({pendingRun.done.length} of {sites.length})
           </button>
         ) : null}
         <p className="progress-line">{status}</p>
@@ -734,11 +704,11 @@ export function Fetcher() {
         {state.lastFetch && !running ? (
           <p className="hint waiting-split">Saved {formatAdded(new Date(state.lastFetch.at).toISOString())}</p>
         ) : null}
-        {ranked.length ? <PageList rows={ranked} bonusMode={state.bonusMode} /> : <p className="hint">Nothing with a balance or bonus yet.</p>}
+        {ranked.length ? <PageList rows={ranked} /> : <p className="hint">Nothing with a balance or bonus yet.</p>}
       </div>
       <div>
         <h2 className="section-label">Signed in, nothing waiting · {empty.length}</h2>
-        {quiet.length ? <PageList rows={quiet} bonusMode={state.bonusMode} /> : <p className="hint">None.</p>}
+        {quiet.length ? <PageList rows={quiet} /> : <p className="hint">None.</p>}
       </div>
       <div>
         <h2 className="section-label">Not your account or unreachable · {errors.length}</h2>
@@ -798,7 +768,7 @@ export function Fetcher() {
                 className="btn btn-grad"
                 onClick={() => {
                   setConfirmScan(false);
-                  void run(CATALOG.map((site) => site.domain));
+                  void run(sites.map((site) => site.domain));
                 }}
               >
                 Scan my login
