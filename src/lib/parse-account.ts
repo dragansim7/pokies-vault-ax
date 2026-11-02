@@ -4,8 +4,16 @@ export type BonusView = {
   amountDisplay: string;
   minWithdrawal: number | null;
   maxWithdrawal: number | null;
+  maxDisplay: string | null;
   rollover: number | null;
   percent: boolean;
+  lit: boolean;
+  id: number;
+  transactionId: number;
+  angpaoId: number;
+  luckyId: number;
+  host: string;
+  detail: string;
 };
 
 export type PromoBox = {
@@ -23,6 +31,7 @@ export type AccountOk = {
   domain: string;
   ok: true;
   hasData: boolean;
+  unclaimed: boolean;
   cash: number;
   cashWalletName: string;
   cashMinWithdrawal: number | null;
@@ -114,10 +123,85 @@ function categoryOf(name: string, custom: string): BonusKey | null {
   return null;
 }
 
-function litAmount(value: unknown): number | null {
-  const amount = num(value);
-  if (amount == null || amount <= 0) return null;
-  return Math.round(amount * 100) / 100;
+function intId(value: unknown): number {
+  const n = parseInt(String(value ?? "0"), 10);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function holdsAmount(value: unknown): boolean {
+  if (value === 0 || value === "0") return true;
+  if (value == null || value === "") return false;
+  if (typeof value === "number") return Number.isFinite(value);
+  if (typeof value === "string") return value.trim() !== "" && Number.isFinite(Number(value));
+  return false;
+}
+
+function matchKey(bonus: Record<string, unknown>): string {
+  return `${intId(bonus.id)}:${intId(bonus.transactionId)}:${intId(bonus.angpaoId)}:${intId(bonus.luckyId)}`;
+}
+
+function inWindow(bonus: Record<string, unknown>, now: number): boolean {
+  const start = Date.parse(String(bonus.startDateTime ?? ""));
+  const end = Date.parse(String(bonus.endDateTime ?? ""));
+  if (Number.isFinite(start) && now < start) return false;
+  if (Number.isFinite(end) && now > end) return false;
+  return true;
+}
+
+function claimDisplay(bonus: Record<string, unknown>): { amount: number; amountDisplay: string } {
+  if (parseInt(String(bonus.displayAmount ?? ""), 10) === 0) {
+    return { amount: num(bonus.amount) ?? 0, amountDisplay: "?" };
+  }
+  const amount = num(bonus.amount) ?? 0;
+  if (amount) return { amount, amountDisplay: moneyCompact(amount) };
+  return { amount: 0, amountDisplay: "?" };
+}
+
+function periodOf(reset: string): string {
+  if (reset === "DAILY") return "day";
+  if (reset === "WEEKLY") return "week";
+  if (reset === "MONTHLY") return "month";
+  return "hour";
+}
+
+function detailOf(bonus: Record<string, unknown>, cfg: Record<string, unknown>): string {
+  if (parseInt(String(cfg.displayDescriptionOnly ?? ""), 10)) return "";
+  const parts: string[] = [];
+  const turnover = num(bonus.minBet);
+  if (turnover != null && turnover >= 0.01) parts.push(`Turnover ${moneyCompact(turnover)}`);
+  const hideMin = parseInt(String(cfg.minWithdrawTimeAmount ?? ""), 10);
+  const minWithdraw = num(bonus.minWithdraw);
+  if (!hideMin && minWithdraw != null && minWithdraw >= 0.01) parts.push(`Min ${moneyCompact(minWithdraw)}`);
+  const maxWithdraw = num(bonus.maxWithdraw);
+  if (maxWithdraw != null && maxWithdraw >= 0.01) {
+    const angpao = String(bonus.transactionType ?? "").toUpperCase() === "ANGPAO" && maxWithdraw < 1;
+    parts.push(`Max ${angpao ? `${Math.round(maxWithdraw * 100)}%` : moneyCompact(maxWithdraw)}`);
+  }
+  const minTop = num(bonus.minTopup);
+  const maxTop = num(bonus.maxTopup);
+  if (minTop && maxTop) parts.push(`Deposit ${moneyCompact(minTop)}–${moneyCompact(maxTop)}`);
+  else if (minTop) parts.push(`Min deposit ${moneyCompact(minTop)}`);
+  else if (maxTop) parts.push(`Max deposit ${moneyCompact(maxTop)}`);
+  const minRound = num(bonus.minRound);
+  if (minRound != null && minRound > 0) parts.push(`Deposits ${minRound}`);
+  const maxRound = num(bonus.maxRound);
+  const reset = String(bonus.reset ?? "");
+  if (maxRound && reset) parts.push(`Limited to ${String(maxRound)} claim per ${periodOf(reset)}`);
+  if (bonus.startDateTime || bonus.endDateTime) {
+    const from = bonus.startDateTime ? String(bonus.startDateTime) : "—";
+    const to = bonus.endDateTime ? String(bonus.endDateTime) : "—";
+    parts.push(`${from} – ${to}`);
+  }
+  return parts.join(" · ");
+}
+
+function visiblePacket(bonus: Record<string, unknown>, cfg: Record<string, unknown>): boolean {
+  const tx = String(bonus.transactionType ?? "").toUpperCase();
+  const name = cleanName(String(bonus.name ?? ""));
+  if (tx === "REBATE" || tx === "COMMISSION" || tx === "ANGPAO" || name === "Lucky Draw") return true;
+  const showIf = parseInt(String(cfg.showIfAmount ?? ""), 10);
+  if (showIf === 1 && !bonus.amount) return false;
+  return true;
 }
 
 function promoSection(bonus: Record<string, unknown>): "rebate" | "commission" | "referral" | "other" {
@@ -143,8 +227,8 @@ function promoBoxesFrom(bonusRaw: unknown[]): PromoBox[] {
   for (const item of bonusRaw) {
     const bonus = asRecord(item);
     if (!bonus) continue;
-    const amount = litAmount(bonus.amount);
-    if (amount == null) continue;
+    const amount = num(bonus.amount);
+    if (!holdsAmount(bonus.amount) || amount == null || amount <= 0) continue;
     const section = promoSection(bonus);
     if (section === "rebate") rebate += amount;
     else if (section === "commission") commission += amount;
@@ -180,7 +264,11 @@ function parseClaimConfig(value: unknown): Record<string, unknown> {
   return asRecord(value) ?? {};
 }
 
-export function parseSyncUser(domain: string, user: unknown): AccountOk {
+export function parseSyncUser(
+  domain: string,
+  user: unknown,
+  promotions?: unknown,
+): AccountOk {
   const row = asRecord(user) ?? {};
   const wallets: WalletView[] = [];
   const walletRaw = Array.isArray(row.wallet) ? row.wallet : [];
@@ -208,7 +296,6 @@ export function parseSyncUser(domain: string, user: unknown): AccountOk {
   const cashMinWithdrawal = minRaw != null && minRaw > 0 ? minRaw : null;
   const cashMaxWithdrawal = maxRaw != null && maxRaw > 0 ? maxRaw : null;
 
-  const taken = asRecord(row.timebonus) ?? {};
   const buckets: Record<BonusKey, BonusView[]> = {
     commission: [],
     share: [],
@@ -217,68 +304,65 @@ export function parseSyncUser(domain: string, user: unknown): AccountOk {
     rebate: [],
   };
   const availableBonuses: BonusView[] = [];
+  const accountPackets = Array.isArray(row.bonus) ? row.bonus : null;
+  const packets = accountPackets ?? (Array.isArray(promotions) ? promotions : []);
+  const accountBound = accountPackets != null;
+  const seen = new Set<string>();
+  const now = Date.now();
 
-  const bonusRaw = Array.isArray(row.bonus) ? row.bonus : [];
-  for (const item of bonusRaw) {
+  for (const item of packets) {
     const bonus = asRecord(item);
     if (!bonus) continue;
-    const id = String(bonus.id ?? "");
-    const maxRound = num(bonus.maxRound) ?? 0;
-    const used = num(taken[id]) ?? 0;
-    if (maxRound > 0 && used >= maxRound) continue;
-
+    const key = matchKey(bonus);
+    if (seen.has(key)) continue;
+    seen.add(key);
     const cfg = parseClaimConfig(bonus.claimConfig);
-    const creditLess = num(cfg.creditLessThan);
-    if (creditLess != null && creditLess > 0 && cash >= creditLess) continue;
+    if (!visiblePacket(bonus, cfg)) continue;
 
+    const lit = accountBound && holdsAmount(bonus.amount) && inWindow(bonus, now);
+    const shown = lit ? claimDisplay(bonus) : { amount: 0, amountDisplay: "" };
+    const hideMin = parseInt(String(cfg.minWithdrawTimeAmount ?? ""), 10);
+    const minWithdraw = num(bonus.minWithdraw);
+    const maxWithdraw = num(bonus.maxWithdraw);
+    const turnover = num(bonus.minBet);
+    const angpao = String(bonus.transactionType ?? "").toUpperCase() === "ANGPAO" && maxWithdraw != null && maxWithdraw < 1;
     const name = cleanName(String(bonus.name ?? "Bonus")) || "Bonus";
-    const custom = String(cfg.customBonus ?? "");
-    const fixed = num(bonus.bonusFixed) ?? 0;
-    const percent = num(bonus.bonus) ?? 0;
-    const random = asRecord(bonus.bonusRandom);
-    const rmin = random ? num(random.min) : null;
-    const rmax = random ? num(random.max) : null;
-    const rolloverRaw = num(bonus.rollover);
-    const rollover = rolloverRaw != null && rolloverRaw > 0 ? rolloverRaw : null;
-
-    let amount = 0;
-    let amountDisplay = "";
-    let isPercent = false;
-    if (fixed > 0) {
-      amount = fixed;
-      amountDisplay = moneyCompact(fixed);
-    } else if (rmin != null && rmax != null && rmax > 0) {
-      amount = rmax;
-      amountDisplay = `${moneyCompact(rmin)}–${moneyCompact(rmax)}`;
-    } else if (percent > 0) {
-      amount = 0;
-      amountDisplay = `${percent % 1 === 0 ? percent : percent.toFixed(0)}% match`;
-      isPercent = true;
-    } else {
-      continue;
-    }
-
     const view: BonusView = {
       name,
-      amount,
-      amountDisplay,
-      minWithdrawal: num(cfg.minWithdraw) ?? num(cfg.minWithdrawal),
-      maxWithdrawal: num(cfg.maxWithdraw) ?? num(cfg.maxWithdrawal),
-      rollover,
-      percent: isPercent,
+      amount: shown.amount,
+      amountDisplay: shown.amountDisplay,
+      minWithdrawal: !hideMin && minWithdraw != null && minWithdraw >= 0.01 ? minWithdraw : null,
+      maxWithdrawal: maxWithdraw != null && maxWithdraw >= 0.01 ? maxWithdraw : null,
+      maxDisplay:
+        maxWithdraw != null && maxWithdraw >= 0.01
+          ? angpao
+            ? `${Math.round(maxWithdraw * 100)}%`
+            : moneyCompact(maxWithdraw)
+          : null,
+      rollover: turnover != null && turnover >= 0.01 ? turnover : null,
+      percent: false,
+      lit,
+      id: intId(bonus.id),
+      transactionId: intId(bonus.transactionId),
+      angpaoId: intId(bonus.angpaoId),
+      luckyId: intId(bonus.luckyId),
+      host: domain,
+      detail: detailOf(bonus, cfg),
     };
     availableBonuses.push(view);
-    const key = categoryOf(name, custom);
-    if (key) buckets[key].push(view);
+    if (!lit) continue;
+    const category = categoryOf(name, String(cfg.customBonus ?? ""));
+    if (category) buckets[category].push(view);
   }
 
-  availableBonuses.sort((a, b) => b.amount - a.amount || a.name.localeCompare(b.name));
+  availableBonuses.sort(
+    (a, b) => Number(b.lit) - Number(a.lit) || b.amount - a.amount || a.name.localeCompare(b.name),
+  );
 
   const pick = (list: BonusView[]): BonusView | null => {
-    if (!list.length) return null;
-    const dollars = list.filter((item) => !item.percent);
-    const pool = dollars.length ? dollars : list;
-    return [...pool].sort((a, b) => b.amount - a.amount)[0] ?? null;
+    const lit = list.filter((item) => item.lit);
+    if (!lit.length) return null;
+    return [...lit].sort((a, b) => b.amount - a.amount)[0] ?? null;
   };
 
   const commission = pick(buckets.commission);
@@ -286,17 +370,22 @@ export function parseSyncUser(domain: string, user: unknown): AccountOk {
   const referral = pick(buckets.referral);
   const fresh = pick(buckets.new);
   const rebate = pick(buckets.rebate);
-
-  const promoBoxes = promoBoxesFrom(bonusRaw);
+  const claimable = packets.filter((item) => {
+    const bonus = asRecord(item);
+    return Boolean(bonus && accountBound && holdsAmount(bonus.amount) && inWindow(bonus, now));
+  });
+  const promoBoxes = promoBoxesFrom(claimable);
+  const unclaimed = availableBonuses.some((bonus) => bonus.lit);
 
   const hasData = Boolean(
-    wallets.some((wallet) => wallet.balance > 0.001) || cash > 0.001 || promoBoxes.length,
+    wallets.some((wallet) => wallet.balance > 0.001) || cash > 0.001 || unclaimed || promoBoxes.length,
   );
 
   return {
     domain,
     ok: true,
     hasData,
+    unclaimed,
     cash,
     cashWalletName,
     cashMinWithdrawal,

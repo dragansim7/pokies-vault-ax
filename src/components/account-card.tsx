@@ -31,19 +31,13 @@ function walletOf(account: AccountOk | null | undefined): number {
 }
 
 function chipLine(bonus: BonusView | null, bet: boolean): string {
-  const max = bonus?.maxWithdrawal != null && bonus.maxWithdrawal > 0 ? moneyShort(bonus.maxWithdrawal) : "—";
+  const max = bonus?.maxDisplay ?? "—";
   if (bet) {
     const roll = bonus?.rollover != null && bonus.rollover > 0 ? moneyShort(bonus.rollover) : "—";
     return `Bet ${roll} ↑ ${max}`;
   }
   const min = bonus?.minWithdrawal != null && bonus.minWithdrawal > 0 ? moneyShort(bonus.minWithdrawal) : "—";
   return `↓ ${min} ↑ ${max}`;
-}
-
-function limitLine(bonus: BonusView): string {
-  const min = bonus.minWithdrawal != null && bonus.minWithdrawal > 0 ? moneyShort(bonus.minWithdrawal) : "—";
-  const max = bonus.maxWithdrawal != null && bonus.maxWithdrawal > 0 ? moneyShort(bonus.maxWithdrawal) : "—";
-  return `Min ${min} · Max ${max}`;
 }
 
 export function AccountCard({
@@ -89,6 +83,7 @@ export function AccountCard({
             >
               {domain}
             </a>
+            {account?.unclaimed ? <span className="acct-unclaimed">Unclaimed</span> : null}
             {onToggleSave ? (
               <button
                 type="button"
@@ -125,15 +120,15 @@ export function AccountCard({
       <div className="acct-chips">
         {CHIPS.map((chip) => {
           const bonus = account?.[chip.key] ?? null;
-          const hot = Boolean(bonus && (bonus.amount > 0 || bonus.amountDisplay));
+          const hot = Boolean(bonus?.lit);
           return (
             <div key={chip.key} className={hot ? "acct-chip hot" : "acct-chip"}>
               <span>{chip.label}</span>
               <strong>
-                {bonus ? bonus.amountDisplay || moneyShort(bonus.amount) : "—"}
-                {chip.key === "new" && bonus && bonus.amount <= 0 ? <i /> : null}
+                {hot ? bonus?.amountDisplay || "?" : "—"}
+                {chip.key === "new" && hot && (bonus?.amount ?? 0) <= 0 ? <i /> : null}
               </strong>
-              <small>{chipLine(bonus, chip.bet)}</small>
+              <small>{hot ? chipLine(bonus ?? null, chip.bet) : chip.bet ? "Bet — ↑ —" : "↓ — ↑ —"}</small>
             </div>
           );
         })}
@@ -142,18 +137,26 @@ export function AccountCard({
       {open ? (
         <div className="acct-drop">
           {bonuses.length ? (
-            bonuses.map((bonus, index) => (
-              <div className="acct-bonus" key={`${bonus.name}-${index}`}>
+            bonuses.map((bonus) => (
+              <div
+                className={bonus.lit ? "acct-bonus" : "acct-bonus grey"}
+                key={`${bonus.host}-${bonus.id}-${bonus.transactionId}-${bonus.angpaoId}-${bonus.luckyId}`}
+                data-id={bonus.id}
+                data-transaction-id={bonus.transactionId}
+                data-angpao-id={bonus.angpaoId}
+                data-lucky-id={bonus.luckyId}
+                data-host={bonus.host}
+              >
                 <div>
                   <strong>
-                    {index === 0 ? <Star size={12} /> : null}
+                    {bonus.lit ? <Star size={12} /> : null}
                     {bonus.name}
                   </strong>
-                  <span>{limitLine(bonus)}</span>
+                  {bonus.detail ? <span>{bonus.detail}</span> : null}
                 </div>
                 <b>
-                  {bonus.amount > 0 ? <i /> : null}
-                  {bonus.amountDisplay || moneyShort(bonus.amount)}
+                  {bonus.lit && bonus.amount > 0 ? <i /> : null}
+                  {bonus.lit ? bonus.amountDisplay || "?" : "—"}
                 </b>
               </div>
             ))

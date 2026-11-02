@@ -151,7 +151,29 @@ export async function fetchCasinoAccount(input: {
       );
     }
 
-    return parseSyncUser(domain, synced.data);
+    const syncedRow = synced.data && typeof synced.data === "object" ? (synced.data as { bonus?: unknown }) : null;
+    let promotions: unknown;
+    if (!syncedRow || !Array.isArray(syncedRow.bonus)) {
+      try {
+        const pub = await postApi(
+          host,
+          {
+            module: "/merchants/getPublicInfo",
+            merchantId,
+            accessId: "",
+            accessToken: "",
+            walletIsAdmin: "",
+          },
+          signal,
+        );
+        const body = pub.data && typeof pub.data === "object" ? (pub.data as { promotions?: unknown }) : null;
+        promotions = body?.promotions;
+      } catch {
+        promotions = undefined;
+      }
+    }
+
+    return parseSyncUser(domain, synced.data, promotions);
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     return classifyFailure(domain, message, "Could not reach site");
