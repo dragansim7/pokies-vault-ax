@@ -6,7 +6,8 @@ import { visibleSites } from "@/lib/working-sites";
 import { useVault, type AttentionMark, type FallbackCred } from "@/components/vault";
 import { SiteIcon } from "@/components/site-icon";
 import { AccountCard } from "@/components/account-card";
-import { fetchCasinoBatchFn } from "@/lib/casino.functions";
+import { fetchCasinoBatchFn, resolveCasinoTargetsFn } from "@/lib/casino.functions";
+import { fetchAccountsOnDevice, isInstalledPhone } from "@/lib/fetch-on-device";
 import { isPublicDomain, normalizeDomain } from "@/lib/domain";
 import { money, formatAdded } from "@/lib/format";
 import { catalogMeta, compareSites } from "@/lib/order";
@@ -17,6 +18,44 @@ const BATCH = 10;
 const RUN_KEY = "vault-run";
 
 type RunCheckpoint = { at: number; done: string[]; rows: AccountRow[] };
+
+type LiveStats = {
+  phase: "idle" | "running" | "done" | "stopped";
+  fromPhone: boolean;
+  done: number;
+  total: number;
+  startedAt: number | null;
+  finishedAt: number | null;
+  fetchMs: number;
+  attempts: number;
+  retries: number;
+  peakQueue: number;
+};
+
+const IDLE_LIVE: LiveStats = {
+  phase: "idle",
+  fromPhone: false,
+  done: 0,
+  total: 0,
+  startedAt: null,
+  finishedAt: null,
+  fetchMs: 0,
+  attempts: 0,
+  retries: 0,
+  peakQueue: 0,
+};
+
+function formatSpan(ms: number): string {
+  const seconds = Math.max(0, Math.round(ms / 1000));
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  if (minutes <= 0) return `${rest}s`;
+  return `${minutes}m ${rest}s`;
+}
+
+function viaLabel(fromPhone: boolean): string {
+  return fromPhone ? "From this phone" : "From the vault";
+}
 
 function readRun(): RunCheckpoint | null {
   if (typeof localStorage === "undefined") return null;
@@ -213,11 +252,24 @@ function PageList({ rows }: { rows: AccountOk[] }) {
   );
 }
 
+const CODE_LABEL: Record<AccountCode, string> = {
+  captcha: "Captcha",
+  invalid_login: "Not your account",
+  timeout: "Timed out",
+  unreachable: "Unreachable",
+  blocked: "Page blocked",
+  empty: "Empty page",
+  unsupported: "Different login",
+  other: "Other",
+};
+
 const CODE_ORDER: AccountCode[] = [
   "captcha",
   "invalid_login",
   "timeout",
   "unreachable",
+  "blocked",
+  "empty",
   "unsupported",
   "other",
 ];
@@ -260,7 +312,7 @@ function NeedsAttention({
         <p className="attention-counts">
           {counts.map((item) => (
             <span key={item.code}>
-              {item.code} <b>{item.count}</b>
+              {CODE_LABEL[item.code]} <b>{item.count}</b>
             </span>
           ))}
         </p>
@@ -275,7 +327,7 @@ function NeedsAttention({
       {groups.map((group) => (
         <div className="attention-group" key={group.code}>
           <h3>
-            {group.code} · {group.rows.length}
+            {CODE_LABEL[group.code]} · {group.rows.length}
           </h3>
           <div className="attention-table">
             {group.rows.map((row) => {
@@ -291,7 +343,7 @@ function NeedsAttention({
                     <span className="sr">Checked</span>
                   </label>
                   <strong className="attention-domain">{row.domain}</strong>
-                  <span className="attention-code">{row.code}</span>
+                  <span className="attention-code">{CODE_LABEL[row.code]}</span>
                   <span className="attention-message">{row.message}</span>
                   <time dateTime={savedAt ? new Date(savedAt).toISOString() : undefined}>{stamp}</time>
                   <a href={`https://${row.domain}/`} target="_blank" rel="noreferrer">
@@ -310,12 +362,16 @@ function NeedsAttention({
 export function Fetcher() {
   const { state, patch, rememberAccount, rememberLogins, saveFetch } = useVault();
   const fetchBatch = useServerFn(fetchCasinoBatchFn);
+  const resolveTargets = useServerFn(resolveCasinoTargetsFn);
+  const [onDevice, setOnDevice] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [advanced, setAdvanced] = useState(false);
   const [single, setSingle] = useState("");
   const [status, setStatus] = useState("Enter the phone number and password you use on these sites.");
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [live, setLive] = useState<LiveStats>(IDLE_LIVE);
+  const [now, setNow] = useState(() => Date.now());
   const [rows, setRows] = useState<AccountRow[]>(state.lastFetch?.rows ?? []);
   const [showErrors, setShowErrors] = useState(false);
   const [confirmScan, setConfirmScan] = useState(false);
@@ -323,8 +379,22 @@ export function Fetcher() {
   const [comparedAt, setComparedAt] = useState<number | null>(null);
   const [pendingRun, setPendingRun] = useState<RunCheckpoint | null>(null);
   const stopRef = useRef<AbortController | null>(null);
+  const onDeviceRef = useRef(false);
+  const liveRef = useRef(live);
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
+
+  useEffect(() => {
+    const installed = isInstalledPhone();
+    onDeviceRef.current = installed;
+    setOnDevice(installed);
+  }, []);
+
+  useEffect(() => {
+    if (live.phase !== "running") return;
+    const id = window.setInterval(() => setNow(Date.now()), 500);
+    return () => window.clearInterval(id);
+  }, [live.phase]);
 
   const sites = useMemo(
     () => visibleSites(state),
@@ -352,6 +422,7 @@ export function Fetcher() {
   const valid = rows.filter((row): row is AccountOk => row.ok && row.hasData);
   const empty = rows.filter((row): row is AccountOk => row.ok && !row.hasData);
   const errors = rows.filter((row) => !row.ok);
+  const unsupportedDomains = errors.filter((row) => row.code === "unsupported").map((row) => row.domain);
   const orderOf = (a: AccountOk, b: AccountOk) =>
     compareSites(catalogMeta(a.domain), catalogMeta(b.domain), a, b, state.sort, state.bonusMode);
   const ranked = [...valid].sort(orderOf);
@@ -365,7 +436,7 @@ export function Fetcher() {
     patch({ fallbacks });
   }
 
-  async function run(domains: string[], resumeFrom?: RunCheckpoint) {
+  async function run(domains: string[], resumeFrom?: RunCheckpoint, mergeBase?: AccountRow[]) {
     const unique = Array.from(new Set(domains));
     if (!unique.length) {
       setStatus("No sites to check. Save accounts from the list, add a domain, or scan.");
@@ -376,14 +447,31 @@ export function Fetcher() {
       setStatus("Enter your phone number and password before fetching.");
       return;
     }
+    const fromPhone = onDeviceRef.current;
+    const merging = Boolean(mergeBase);
     const previousAt = state.lastFetch?.at ?? null;
     const previous = new Map((state.lastFetch?.rows ?? []).filter((row) => row.ok).map((row) => [row.domain, row]));
     stopRef.current?.abort();
     const controller = new AbortController();
     stopRef.current = controller;
-    const collected: AccountRow[] = resumeFrom ? [...resumeFrom.rows] : [];
+    const collected: AccountRow[] = resumeFrom ? [...resumeFrom.rows] : mergeBase ? [...mergeBase] : [];
     const done = resumeFrom ? [...resumeFrom.done] : [];
     const total = resumeFrom ? sites.length : unique.length - unseen;
+    const started: LiveStats = {
+      phase: "running",
+      fromPhone,
+      done: done.length,
+      total,
+      startedAt: Date.now(),
+      finishedAt: null,
+      fetchMs: 0,
+      attempts: 0,
+      retries: 0,
+      peakQueue: Math.max(0, total - done.length),
+    };
+    liveRef.current = started;
+    setLive(started);
+    setNow(started.startedAt ?? Date.now());
     setRunning(true);
     setShowErrors(false);
     setDiffs([]);
@@ -393,11 +481,13 @@ export function Fetcher() {
     setStatus(
       resumeFrom
         ? `Resuming ${done.length} of ${sites.length}…`
-        : unique.length === 1
-          ? `Checking ${unique[0]}…`
-          : unseen
-            ? `Checking ${total} sites that already have a saved login…`
-            : `Checking ${unique.length} sites…`,
+        : merging
+          ? `Retrying ${unique.length} unsupported sites…`
+          : unique.length === 1
+            ? `Checking ${unique[0]}…`
+            : unseen
+              ? `Checking ${total} sites that already have a saved login…`
+              : `Checking ${unique.length} sites…`,
     );
 
     const publish = (batchRows: AccountRow[], loginNotes: { domain: string; login: FallbackCred | null }[]) => {
@@ -412,9 +502,19 @@ export function Fetcher() {
       const snapshot = [...collected].sort((a, b) => a.domain.localeCompare(b.domain));
       setRows(snapshot);
       setProgress({ done: done.length, total });
-      const checkpoint = { at: Date.now(), done: [...done], rows: snapshot };
-      writeRun(checkpoint);
-      setPendingRun(done.length < sites.length ? checkpoint : null);
+      const queue = Math.max(0, total - done.length);
+      liveRef.current = {
+        ...liveRef.current,
+        done: done.length,
+        total,
+        peakQueue: Math.max(liveRef.current.peakQueue, queue),
+      };
+      setLive(liveRef.current);
+      if (!merging) {
+        const checkpoint = { at: Date.now(), done: [...done], rows: snapshot };
+        writeRun(checkpoint);
+        setPendingRun(done.length < sites.length ? checkpoint : null);
+      }
     };
 
     let cursor = 0;
@@ -432,10 +532,20 @@ export function Fetcher() {
         try {
           for (const cred of batch.creds) {
             if (controller.signal.aborted || !pending.length) break;
-            const result = await fetchBatch({
-              data: { domains: pending, phone: cred.phone, password: cred.password },
-              signal: controller.signal,
-            });
+            const startedTry = Date.now();
+            const result = fromPhone
+              ? await fetchAccountsOnDevice({
+                  domains: pending,
+                  phone: cred.phone,
+                  password: cred.password,
+                  signal: controller.signal,
+                  resolve: (domains) =>
+                    resolveTargets({ data: { domains }, signal: controller.signal }),
+                })
+              : await fetchBatch({
+                  data: { domains: pending, phone: cred.phone, password: cred.password },
+                  signal: controller.signal,
+                });
             const retry: string[] = [];
             const returned = new Set(result.map((row) => row.domain));
             for (const row of result) {
@@ -451,6 +561,13 @@ export function Fetcher() {
             for (const domain of pending) {
               if (!returned.has(domain) && !settled.has(domain)) retry.push(domain);
             }
+            liveRef.current = {
+              ...liveRef.current,
+              fetchMs: liveRef.current.fetchMs + (Date.now() - startedTry),
+              attempts: liveRef.current.attempts + Math.max(result.length, pending.length),
+              retries: liveRef.current.retries + retry.length,
+            };
+            setLive(liveRef.current);
             pending = retry;
           }
         } catch (error) {
@@ -471,12 +588,12 @@ export function Fetcher() {
         );
       }
     };
-    await Promise.all(Array.from({ length: Math.min(4, batches.length) }, () => worker()));
+    await Promise.all(Array.from({ length: Math.min(fromPhone ? 2 : 4, batches.length) }, () => worker()));
     const stopped = controller.signal.aborted;
     const finalRows = [...collected].sort((a, b) => a.domain.localeCompare(b.domain));
     setRows(finalRows);
     saveFetch(finalRows);
-    if (!stopped && done.length >= sites.length) {
+    if (!merging && !stopped && done.length >= sites.length) {
       try {
         localStorage.removeItem(RUN_KEY);
       } catch {
@@ -497,6 +614,13 @@ export function Fetcher() {
     setDiffs(notes);
     setComparedAt(previousAt);
     const signedIn = finalRows.filter((row) => row.ok).length;
+    liveRef.current = {
+      ...liveRef.current,
+      phase: stopped ? "stopped" : "done",
+      finishedAt: Date.now(),
+      done: done.length,
+    };
+    setLive(liveRef.current);
     setStatus(
       stopped
         ? "Stopped. Successful sign-ins stay in My accounts."
@@ -512,7 +636,7 @@ export function Fetcher() {
   ).filter((domain) => allowed.has(domain));
 
   return (
-    <section className="stack">
+    <section className="stack" data-fetch-from={onDevice ? "phone" : "server"}>
       <Link to="/" className="hint" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
         <ChevronLeft size={16} /> Back to the list
       </Link>
@@ -589,7 +713,9 @@ export function Fetcher() {
             ))
           : null}
         <p className="hint">
-          Saved only in this browser. The server uses them to sign in and does not keep them.
+          {onDevice
+            ? "Saved only on this phone. Sign-in goes straight from this phone to the site. The password is not sent through the vault. Up and down checks still use the vault."
+            : "Saved only in this browser. The server uses them to sign in and does not keep them."}
         </p>
         <div className="actions">
           <button
@@ -600,6 +726,14 @@ export function Fetcher() {
           >
             {running ? <Loader2 size={16} /> : null} Fetch my accounts
             {mineTargets.length ? ` (${mineTargets.length})` : ""}
+          </button>
+          <button
+            type="button"
+            className="btn"
+            disabled={running || unsupportedDomains.length === 0}
+            onClick={() => void run(unsupportedDomains, undefined, rows)}
+          >
+            Retry unsupported{unsupportedDomains.length ? ` (${unsupportedDomains.length})` : ""}
           </button>
           <button type="button" className="btn" disabled={!running} onClick={() => stopRef.current?.abort()}>
             Stop
@@ -660,7 +794,29 @@ export function Fetcher() {
             Resume scan ({pendingRun.done.length} of {sites.length})
           </button>
         ) : null}
-        <p className="progress-line">{status}</p>
+        <div className="panel live-fetch">
+          <h2 className="section-label">Live fetch</h2>
+          <p className="live-via">{viaLabel(live.phase === "idle" ? onDevice : live.fromPhone)}</p>
+          <p className="live-count">
+            {live.phase === "idle" ? 0 : live.done} / {live.total} processed · {live.total ? Math.round(((live.phase === "idle" ? 0 : live.done) / live.total) * 100) : 0}%
+          </p>
+          <p className="live-meta">
+            {live.phase === "running" ? "Running" : live.phase === "done" ? "Done" : live.phase === "stopped" ? "Stopped" : "Idle"}
+          </p>
+          <p className="live-meta">
+            {live.phase === "idle" ? 0 : rows.filter((row) => row.ok).length} signed in · {live.phase === "idle" ? 0 : errors.length} rejected · {live.phase === "idle" ? 0 : ranked.length} with a balance · {live.phase === "idle" ? 0 : quiet.length} nothing waiting
+          </p>
+          <p className="live-meta">
+            Queue {Math.max(0, live.total - (live.phase === "idle" ? 0 : live.done))} · peak {live.peakQueue}
+          </p>
+          <p className="live-meta">
+            Wall {live.startedAt ? formatSpan((live.finishedAt ?? now) - live.startedAt) : "0s"} · sign-in {formatSpan(live.fetchMs)}
+          </p>
+          <p className="live-meta">
+            Retries {live.retries} · attempts {live.attempts}
+          </p>
+        </div>
+        <p className="progress-line">{viaLabel(live.phase === "idle" ? onDevice : live.fromPhone)}. {status}</p>
         {progress.total > 0 ? (
           <div className="bar" aria-hidden="true">
             <span style={{ width: `${Math.round((progress.done / progress.total) * 100)}%` }} />

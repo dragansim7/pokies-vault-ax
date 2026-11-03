@@ -1,10 +1,10 @@
 import { i as __toESM } from "../_runtime.mjs";
 import { S as require_jsx_runtime, Y as require_react, b as Link } from "../_libs/@tanstack/react-router+[...].mjs";
 import { n as normalizeDomain, t as isPublicDomain } from "./domain-CILCWuBu.mjs";
-import { g as ChevronLeft, p as LoaderCircle } from "../_libs/lucide-react.mjs";
-import { c as INTEL_KEY, l as domainsFromText, n as useVault, s as workingSites } from "./router-ColQBS1E.mjs";
-import { a as useServerFn, n as checkSiteStatus, r as fetchAllStatusesFn, t as AppFrame } from "./casino.functions-BDU87UJW.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/intel-Dy5TNPL5.js
+import { m as LoaderCircle, v as ChevronLeft } from "../_libs/lucide-react.mjs";
+import { c as domainsFromText, n as useVault, o as visibleSites, s as INTEL_KEY } from "./router-C9f5wAn0.mjs";
+import { n as checkSiteStatus, o as useServerFn, r as fetchAllStatusesFn, t as AppFrame } from "./casino.functions-BkJvSt0N.mjs";
+//#region node_modules/.nitro/vite/services/ssr/assets/intel-DD5IqRAC.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 var KEY = INTEL_KEY;
@@ -61,7 +61,7 @@ function DomainIntel() {
 	const stopRef = (0, import_react.useRef)(null);
 	const fileRef = (0, import_react.useRef)(null);
 	const allRef = (0, import_react.useRef)(null);
-	const domains = (0, import_react.useMemo)(() => workingSites(state.custom, state.removed).map((site) => site.domain), [state.custom, state.removed]);
+	const domains = (0, import_react.useMemo)(() => visibleSites(state).map((site) => site.domain), [state]);
 	const shown = (0, import_react.useMemo)(() => {
 		const q = filter.trim().toLowerCase();
 		return q ? domains.filter((domain) => domain.includes(q)) : domains;
@@ -117,7 +117,13 @@ function DomainIntel() {
 			setNote("");
 			return;
 		}
-		if (!addManaged([domain])) {
+		const result = addManaged([domain]);
+		if (result.error) {
+			setError(result.error);
+			setNote("");
+			return;
+		}
+		if (!result.added) {
 			setError("That domain is already in the list.");
 			setNote("");
 			return;
@@ -137,9 +143,14 @@ function DomainIntel() {
 				setNote("");
 				return;
 			}
-			const added = addManaged(found);
+			const result = addManaged(found);
+			if (result.error) {
+				setError(result.error);
+				setNote("");
+				return;
+			}
 			setError("");
-			setNote(`Imported ${added} new domain${added === 1 ? "" : "s"} from ${found.length} in the file.`);
+			setNote(`Imported ${result.added} new domain${result.added === 1 ? "" : "s"} from ${found.length} in the file.`);
 		};
 		reader.readAsText(file);
 		if (fileRef.current) fileRef.current.value = "";
@@ -163,7 +174,12 @@ function DomainIntel() {
 	function removeSelected() {
 		if (!selected.size) return;
 		const drop = [...selected];
-		removeManaged(drop);
+		const message = removeManaged(drop);
+		if (message) {
+			setError(message);
+			setNote("");
+			return;
+		}
 		setChecks((current) => {
 			const next = { ...current };
 			for (const domain of drop) delete next[domain];
@@ -293,7 +309,7 @@ function DomainIntel() {
 				children: "Domain Intel"
 			}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
 				className: "hint",
-				children: "This is the same list as the main page and the fetcher. Add or remove a domain here and it changes in both places."
+				children: "This is the same list as the main page and the fetcher. After you add or remove a domain, that exact list is what comes back when you reopen the app."
 			})] }),
 			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 				className: "intel-counts",

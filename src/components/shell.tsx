@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Menu, Palette, Plus, Radar, Shield, Trash2, UserRound, X, Zap } from "lucide-react";
+import { Gift, Menu, Palette, Plus, Radar, Shield, Trash2, UserRound, X, Zap } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { useVault } from "@/components/vault";
 import { THEMES, type ThemeId } from "@/lib/themes";
@@ -98,6 +98,14 @@ export function AppFrame({ children }: { children: ReactNode }) {
               >
                 <Radar size={14} />
                 Domain Intel
+              </Link>
+              <Link
+                to="/bonuses"
+                className={path === "/bonuses" ? "drawer-tab on" : "drawer-tab"}
+                onClick={() => setMenu(false)}
+              >
+                <Gift size={14} />
+                Bonus Finder
               </Link>
               <button
                 type="button"

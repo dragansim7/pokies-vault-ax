@@ -50,6 +50,8 @@ export type AccountCode =
   | "invalid_login"
   | "captcha"
   | "unsupported"
+  | "empty"
+  | "blocked"
   | "timeout"
   | "unreachable"
   | "other";

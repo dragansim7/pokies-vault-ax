@@ -3,7 +3,7 @@ import { S as require_jsx_runtime, Y as require_react, _ as lazyRouteComponent, 
 import { n as normalizeDomain, t as isPublicDomain } from "./domain-CILCWuBu.mjs";
 import { a as TriangleAlert } from "../_libs/lucide-react.mjs";
 import { a as union, i as string, n as number, r as object, t as literal } from "../_libs/zod.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/router-ColQBS1E.js
+//#region node_modules/.nitro/vite/services/ssr/assets/router-C9f5wAn0.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 var __defProp = Object.defineProperty;
@@ -306,22 +306,6 @@ function PreviewHostBridge() {
 		});
 	}, [router]);
 	return null;
-}
-var INTEL_KEY = "pokies_vault_intel_v1";
-function domainsFromText(text) {
-	const out = [];
-	const seen = /* @__PURE__ */ new Set();
-	for (const line of text.split(/\r?\n/)) {
-		const cleaned = line.replace(/#.*/, "").trim();
-		if (!cleaned) continue;
-		for (const part of cleaned.split(/[\s,;]+/)) {
-			const domain = normalizeDomain(part);
-			if (!isPublicDomain(domain) || seen.has(domain)) continue;
-			seen.add(domain);
-			out.push(domain);
-		}
-	}
-	return out;
 }
 var CATALOG_0 = [
 	{
@@ -12752,6 +12736,83 @@ var CATALOG = [
 	...CATALOG_2,
 	...CATALOG_3
 ];
+var LIST_KEY = "pokies_vault_domains_v1";
+var GROUPS = /* @__PURE__ */ new Set([
+	"new",
+	"best",
+	"unverified",
+	"share",
+	"latest",
+	"custom"
+]);
+var CATALOG_MAP = new Map(CATALOG.map((site) => [site.domain, site]));
+function siteRecord(domain, addedAt = null) {
+	return CATALOG_MAP.get(domain) ?? {
+		domain,
+		group: "custom",
+		addedAt
+	};
+}
+function loadOwnedList() {
+	try {
+		const raw = localStorage.getItem(LIST_KEY);
+		if (!raw) return null;
+		const parsed = JSON.parse(raw);
+		if (parsed.owned !== true || !Array.isArray(parsed.sites)) return null;
+		const sites = [];
+		const seen = /* @__PURE__ */ new Set();
+		for (const item of parsed.sites) {
+			if (!item || typeof item !== "object") continue;
+			const row = item;
+			const domain = normalizeDomain(String(row.domain ?? ""));
+			if (!isPublicDomain(domain) || seen.has(domain)) continue;
+			seen.add(domain);
+			const addedAt = typeof row.addedAt === "string" ? row.addedAt : null;
+			const group = GROUPS.has(row.group) ? row.group : null;
+			sites.push(group ? {
+				domain,
+				group,
+				addedAt
+			} : siteRecord(domain, addedAt));
+		}
+		return sites;
+	} catch {
+		return null;
+	}
+}
+function saveOwnedList(sites) {
+	try {
+		const payload = JSON.stringify({
+			owned: true,
+			sites
+		});
+		localStorage.setItem(LIST_KEY, payload);
+		return localStorage.getItem(LIST_KEY) === payload;
+	} catch {
+		return false;
+	}
+}
+function clearOwnedList() {
+	try {
+		localStorage.removeItem(LIST_KEY);
+	} catch {}
+}
+var INTEL_KEY = "pokies_vault_intel_v1";
+function domainsFromText(text) {
+	const out = [];
+	const seen = /* @__PURE__ */ new Set();
+	for (const line of text.split(/\r?\n/)) {
+		const cleaned = line.replace(/#.*/, "").trim();
+		if (!cleaned) continue;
+		for (const part of cleaned.split(/[\s,;]+/)) {
+			const domain = normalizeDomain(part);
+			if (!isPublicDomain(domain) || seen.has(domain)) continue;
+			seen.add(domain);
+			out.push(domain);
+		}
+	}
+	return out;
+}
 function workingSites(custom, removed) {
 	const gone = new Set(removed);
 	const sites = [];
@@ -12771,6 +12832,10 @@ function workingSites(custom, removed) {
 		seen.add(site.domain);
 	}
 	return sites;
+}
+function visibleSites(input) {
+	if (input.listOwned) return input.sites;
+	return workingSites(input.custom, input.removed);
 }
 var THEMES = [
 	{
@@ -12961,11 +13026,26 @@ function compareSites(a, b, rowA, rowB, sort, bonusMode) {
 	return (CATALOG_INDEX.get(a.domain) ?? Number.POSITIVE_INFINITY) - (CATALOG_INDEX.get(b.domain) ?? Number.POSITIVE_INFINITY) || tie();
 }
 var KEY = "pokies_vault_v1";
+var LIST_ERROR = "The domain list could not be saved on this device, so that change was not kept.";
+function writeVault(state) {
+	const { listOwned: _listOwned, sites: _sites, ...rest } = state;
+	localStorage.setItem(KEY, JSON.stringify(rest));
+}
+function withSavedList(current, sites) {
+	if (!saveOwnedList(sites)) return null;
+	return {
+		...current,
+		listOwned: true,
+		sites
+	};
+}
 var EMPTY = {
 	visited: [],
 	mine: [],
 	custom: [],
 	removed: [],
+	listOwned: false,
+	sites: [],
 	phone: "",
 	password: "",
 	fallbacks: [
@@ -13026,6 +13106,8 @@ function load() {
 			mine: Array.isArray(parsed.mine) ? parsed.mine : [],
 			custom: Array.isArray(parsed.custom) ? parsed.custom : [],
 			removed: Array.isArray(parsed.removed) ? Array.from(new Set(parsed.removed.map((item) => normalizeDomain(String(item))).filter(isPublicDomain))) : [],
+			listOwned: false,
+			sites: [],
 			fallbacks: Array.isArray(parsed.fallbacks) && parsed.fallbacks.length === 3 ? parsed.fallbacks : EMPTY.fallbacks,
 			logins: cleanLogins(parsed.logins),
 			sort: isSortMode(parsed.sort) ? parsed.sort : EMPTY.sort,
@@ -13042,7 +13124,21 @@ function VaultProvider({ children }) {
 	const [state, setState] = (0, import_react.useState)(EMPTY);
 	const [ready, setReady] = (0, import_react.useState)(false);
 	(0, import_react.useEffect)(() => {
-		setState(load());
+		const saved = load();
+		const owned = loadOwnedList();
+		if (owned) setState({
+			...saved,
+			listOwned: true,
+			sites: owned
+		});
+		else if (saved.removed.length || saved.custom.length) {
+			const sites = workingSites(saved.custom, saved.removed);
+			setState(saveOwnedList(sites) ? {
+				...saved,
+				listOwned: true,
+				sites
+			} : saved);
+		} else setState(saved);
 		setReady(true);
 	}, []);
 	(0, import_react.useEffect)(() => {
@@ -13053,7 +13149,7 @@ function VaultProvider({ children }) {
 	const persist = (0, import_react.useCallback)((next) => {
 		setState(next);
 		try {
-			localStorage.setItem(KEY, JSON.stringify(next));
+			writeVault(next);
 		} catch {}
 	}, []);
 	const patch = (0, import_react.useCallback)((partial) => {
@@ -13063,7 +13159,7 @@ function VaultProvider({ children }) {
 				...partial
 			};
 			try {
-				localStorage.setItem(KEY, JSON.stringify(next));
+				writeVault(next);
 			} catch {}
 			return next;
 		});
@@ -13076,7 +13172,7 @@ function VaultProvider({ children }) {
 				visited: [...current.visited, domain]
 			};
 			try {
-				localStorage.setItem(KEY, JSON.stringify(next));
+				writeVault(next);
 			} catch {}
 			return next;
 		});
@@ -13089,7 +13185,7 @@ function VaultProvider({ children }) {
 				visited
 			};
 			try {
-				localStorage.setItem(KEY, JSON.stringify(next));
+				writeVault(next);
 			} catch {}
 			return next;
 		});
@@ -13102,7 +13198,7 @@ function VaultProvider({ children }) {
 				mine
 			};
 			try {
-				localStorage.setItem(KEY, JSON.stringify(next));
+				writeVault(next);
 			} catch {}
 			return next;
 		});
@@ -13115,7 +13211,7 @@ function VaultProvider({ children }) {
 				mine: [...current.mine, domain]
 			};
 			try {
-				localStorage.setItem(KEY, JSON.stringify(next));
+				writeVault(next);
 			} catch {}
 			return next;
 		});
@@ -13147,7 +13243,7 @@ function VaultProvider({ children }) {
 				logins
 			};
 			try {
-				localStorage.setItem(KEY, JSON.stringify(next));
+				writeVault(next);
 			} catch {}
 			return next;
 		});
@@ -13155,67 +13251,81 @@ function VaultProvider({ children }) {
 	const addDomain = (0, import_react.useCallback)((raw) => {
 		const domain = normalizeDomain(raw);
 		if (!isPublicDomain(domain)) return "Enter a domain like 9au.com";
+		let error = null;
 		setState((current) => {
-			const custom = current.custom.some((item) => item.domain === domain) ? current.custom : [{
+			const base = current.listOwned ? current.sites : workingSites(current.custom, current.removed);
+			const exists = base.some((site) => site.domain === domain);
+			let next = current;
+			if (!exists) {
+				const saved = withSavedList(current, [siteRecord(domain, (/* @__PURE__ */ new Date()).toISOString()), ...base]);
+				if (!saved) {
+					error = LIST_ERROR;
+					return current;
+				}
+				next = saved;
+			}
+			const custom = next.custom.some((item) => item.domain === domain) ? next.custom : [{
 				domain,
 				addedAt: (/* @__PURE__ */ new Date()).toISOString()
-			}, ...current.custom];
-			const mine = current.mine.includes(domain) ? current.mine : [...current.mine, domain];
-			const removed = current.removed.filter((item) => item !== domain);
-			const next = {
-				...current,
+			}, ...next.custom];
+			const mine = next.mine.includes(domain) ? next.mine : [...next.mine, domain];
+			const removed = next.removed.filter((item) => item !== domain);
+			const stored = {
+				...next,
 				custom,
 				mine,
 				removed
 			};
 			try {
-				localStorage.setItem(KEY, JSON.stringify(next));
+				writeVault(stored);
 			} catch {}
-			return next;
+			return stored;
 		});
-		return null;
+		return error;
 	}, []);
 	const addManaged = (0, import_react.useCallback)((raws) => {
 		const incoming = Array.from(new Set(raws.map((item) => normalizeDomain(item)).filter(isPublicDomain)));
-		if (!incoming.length) return 0;
-		const catalog = new Set(workingSites([], []).map((site) => site.domain));
-		const removed = new Set(state.removed);
-		const custom = [...state.custom];
-		const have = new Set(custom.map((item) => item.domain));
+		if (!incoming.length) return {
+			added: 0,
+			error: null
+		};
 		let added = 0;
-		for (const domain of incoming) {
-			if (removed.has(domain)) {
-				removed.delete(domain);
-				added += 1;
-				continue;
-			}
-			if (catalog.has(domain) || have.has(domain)) continue;
-			custom.unshift({
-				domain,
-				addedAt: (/* @__PURE__ */ new Date()).toISOString()
-			});
-			have.add(domain);
-			added += 1;
-		}
-		if (!added) return 0;
+		let error = null;
 		setState((current) => {
-			const next = {
-				...current,
-				custom,
-				removed: [...removed]
-			};
-			try {
-				localStorage.setItem(KEY, JSON.stringify(next));
-			} catch {}
-			return next;
+			const base = current.listOwned ? current.sites : workingSites(current.custom, current.removed);
+			const have = new Set(base.map((site) => site.domain));
+			const sites = [...base];
+			const stamp = (/* @__PURE__ */ new Date()).toISOString();
+			for (const domain of incoming) {
+				if (have.has(domain)) continue;
+				sites.push(siteRecord(domain, stamp));
+				have.add(domain);
+				added += 1;
+			}
+			if (!added) return current;
+			const saved = withSavedList(current, sites);
+			if (!saved) {
+				error = LIST_ERROR;
+				added = 0;
+				return current;
+			}
+			return saved;
 		});
-		return added;
-	}, [state.custom, state.removed]);
+		return {
+			added,
+			error
+		};
+	}, []);
 	const removeManaged = (0, import_react.useCallback)((domains) => {
 		const drop = new Set(domains.map((item) => normalizeDomain(item)).filter(isPublicDomain));
-		if (!drop.size) return;
+		if (!drop.size) return null;
+		let error = null;
 		setState((current) => {
-			const removed = Array.from(/* @__PURE__ */ new Set([...current.removed, ...drop]));
+			const saved = withSavedList(current, (current.listOwned ? current.sites : workingSites(current.custom, current.removed)).filter((site) => !drop.has(site.domain)));
+			if (!saved) {
+				error = LIST_ERROR;
+				return current;
+			}
 			const custom = current.custom.filter((item) => !drop.has(item.domain));
 			const mine = current.mine.filter((item) => !drop.has(item));
 			const lastFetch = current.lastFetch ? {
@@ -13223,17 +13333,17 @@ function VaultProvider({ children }) {
 				rows: current.lastFetch.rows.filter((row) => !drop.has(row.domain))
 			} : current.lastFetch;
 			const next = {
-				...current,
-				removed,
+				...saved,
 				custom,
 				mine,
 				lastFetch
 			};
 			try {
-				localStorage.setItem(KEY, JSON.stringify(next));
+				writeVault(next);
 			} catch {}
 			return next;
 		});
+		return error;
 	}, []);
 	const saveFetch = (0, import_react.useCallback)((rows) => {
 		const lastFetch = {
@@ -13249,12 +13359,13 @@ function VaultProvider({ children }) {
 				mine
 			};
 			try {
-				localStorage.setItem(KEY, JSON.stringify(next));
+				writeVault(next);
 			} catch {}
 			return next;
 		});
 	}, []);
 	const clearAll = (0, import_react.useCallback)(() => {
+		clearOwnedList();
 		try {
 			localStorage.removeItem(INTEL_KEY);
 		} catch {}
@@ -13299,7 +13410,7 @@ function useVault() {
 	if (!ctx) throw new Error("Vault missing");
 	return ctx;
 }
-var styles_default = "/assets/styles-Bx6EM4Ej.css";
+var styles_default = "/assets/styles-C96J7wd0.css";
 var Route$3 = createRootRoute({
 	head: () => ({
 		meta: [
@@ -13354,11 +13465,11 @@ var Route$3 = createRootRoute({
 		] })]
 	})
 });
-var $$splitComponentImporter$2 = () => import("./routes-ClY-vDJc.mjs");
+var $$splitComponentImporter$2 = () => import("./routes-Cq2rS6JK.mjs");
 var Route$2 = createFileRoute("/")({ component: lazyRouteComponent($$splitComponentImporter$2, "component") });
-var $$splitComponentImporter$1 = () => import("./fetch-DciGfzDy.mjs");
+var $$splitComponentImporter$1 = () => import("./fetch-D0TBAYFb.mjs");
 var Route$1 = createFileRoute("/fetch")({ component: lazyRouteComponent($$splitComponentImporter$1, "component") });
-var $$splitComponentImporter = () => import("./intel-Dy5TNPL5.mjs");
+var $$splitComponentImporter = () => import("./intel-DD5IqRAC.mjs");
 var Route = createFileRoute("/intel")({ component: lazyRouteComponent($$splitComponentImporter, "component") });
 var rootRouteChildren = {
 	IndexRoute: Route$2.update({
@@ -13386,4 +13497,4 @@ function getRouter() {
 	});
 }
 //#endregion
-export { compareSites as a, INTEL_KEY as c, chosenBonus as i, domainsFromText as l, useVault as n, THEMES as o, catalogMeta as r, workingSites as s, router_exports as t };
+export { THEMES as a, domainsFromText as c, compareSites as i, useVault as n, visibleSites as o, catalogMeta as r, INTEL_KEY as s, router_exports as t };

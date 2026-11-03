@@ -713,6 +713,34 @@ html[data-theme="royal"] {
   font-size: 0.78rem;
 }
 
+.live-fetch {
+  display: grid;
+  gap: 6px;
+}
+
+.live-via,
+.live-count {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.live-via {
+  color: var(--color-fg);
+  font-size: 0.95rem;
+}
+
+.live-count {
+  font-size: 1.05rem;
+}
+
+.live-meta {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+}
+
 .bar {
   height: 4px;
   overflow: hidden;
@@ -1340,6 +1368,46 @@ html[data-theme="royal"] {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 4px;
+}
+
+.acct-chips.slots {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.acct-chips.slots .acct-chip small {
+  white-space: normal;
+  line-height: 1.2;
+}
+
+.finder-slots,
+.finder-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.finder-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.finder-grid label {
+  display: grid;
+  gap: 4px;
+  color: var(--color-muted);
+  font-size: 0.72rem;
+}
+
+.finder-grid select,
+.finder-grid input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgb(255 255 255 / 12%);
+  background: var(--color-panel-2);
+  color: var(--color-fg);
 }
 
 .acct-chip {

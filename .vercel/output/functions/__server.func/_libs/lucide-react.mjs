@@ -116,9 +116,29 @@ var Bookmark = createLucideIcon("bookmark", [["path", {
 * This source code is licensed under the ISC license.
 * See the LICENSE file in the root directory of this source tree.
 */
+var ChevronDown = createLucideIcon("chevron-down", [["path", {
+	d: "m6 9 6 6 6-6",
+	key: "qrunsl"
+}]]);
+/**
+* @license lucide-react v0.510.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
 var ChevronLeft = createLucideIcon("chevron-left", [["path", {
 	d: "m15 18-6-6 6-6",
 	key: "1wnfg3"
+}]]);
+/**
+* @license lucide-react v0.510.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
+var ChevronUp = createLucideIcon("chevron-up", [["path", {
+	d: "m18 15-6-6-6 6",
+	key: "153udz"
 }]]);
 /**
 * @license lucide-react v0.510.0 - ISC
@@ -315,6 +335,16 @@ var Shield = createLucideIcon("shield", [["path", {
 * This source code is licensed under the ISC license.
 * See the LICENSE file in the root directory of this source tree.
 */
+var Star = createLucideIcon("star", [["path", {
+	d: "M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z",
+	key: "r04s7s"
+}]]);
+/**
+* @license lucide-react v0.510.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
 var Trash2 = createLucideIcon("trash-2", [
 	["path", {
 		d: "M3 6h18",
@@ -415,4 +445,4 @@ var Zap = createLucideIcon("zap", [["path", {
 	key: "1xq2db"
 }]]);
 //#endregion
-export { Bookmark as _, TriangleAlert as a, Search as c, Palette as d, Menu as f, ChevronLeft as g, EyeOff as h, UserRound as i, Radar as l, Eye as m, X as n, Trash2 as o, LoaderCircle as p, Wallet as r, Shield as s, Zap as t, Plus as u, ArrowUpDown as v };
+export { ChevronUp as _, TriangleAlert as a, Bookmark as b, Shield as c, Plus as d, Palette as f, EyeOff as g, Eye as h, UserRound as i, Search as l, LoaderCircle as m, X as n, Trash2 as o, Menu as p, Wallet as r, Star as s, Zap as t, Radar as u, ChevronLeft as v, ArrowUpDown as x, ChevronDown as y };

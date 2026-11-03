@@ -1,9 +1,7 @@
 import { isPublicDomain, normalizeDomain } from "@/lib/domain";
-import {
-  accountError,
-  parseSyncUser,
-  type AccountRow,
-} from "@/lib/parse-account";
+import type { CasinoTarget } from "@/lib/casino-target";
+import { parsePublicPromotions, type CatalogueHit } from "@/lib/public-bonus";
+import { accountError, parseSyncUser, type AccountRow } from "@/lib/parse-account";
 
 const UA =
   "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36";
@@ -49,7 +47,7 @@ async function postApi(
 
 function classifyFailure(domain: string, message: string, fallback: string): AccountRow {
   const text = message.toLowerCase();
-  if (text.includes("invalid login")) {
+  if (text.includes("invalid login") || text.includes("invalid password")) {
     return accountError(domain, "invalid_login", "Not your account");
   }
   if (text.includes("captcha")) {
@@ -62,6 +60,92 @@ function classifyFailure(domain: string, message: string, fallback: string): Acc
     return accountError(domain, "timeout", "Timed out");
   }
   return accountError(domain, "other", fallback);
+}
+
+export async function inspectCasino(rawDomain: string): Promise<CasinoTarget> {
+  const domain = normalizeDomain(rawDomain);
+  if (!isPublicDomain(domain)) {
+    return { domain: domain || "domain", ok: false, code: "other", message: "Enter a real site domain" };
+  }
+  const signal = AbortSignal.timeout(18_000);
+  try {
+    const home = await fetch(`https://${domain}/`, {
+      redirect: "follow",
+      signal,
+      headers: {
+        accept: "text/html",
+        "user-agent": UA,
+      },
+    });
+    const finalHost = normalizeDomain(new URL(home.url).hostname);
+    const host = isPublicDomain(finalHost) ? finalHost : domain;
+    const html = (await home.text()).slice(0, 2_000_000);
+    const merchantId = html.match(/MERCHANTID\s*=\s*(\d+)/)?.[1] ?? "";
+    if (merchantId || /api\/v1\/index\.php|cdn\.vefrop\.com\/mobile\/wallet\/app\.js/.test(html)) {
+      return { domain, ok: true, host, merchantId };
+    }
+    const blocked =
+      home.status === 401 ||
+      home.status === 403 ||
+      home.status === 429 ||
+      /just a moment|cf-browser-verification|challenge-platform|attention required/i.test(html);
+    if (blocked) return { domain, ok: false, code: "blocked", message: "Page blocked" };
+    if (html.trim().length < 400) return { domain, ok: false, code: "empty", message: "Empty page" };
+    return { domain, ok: false, code: "unsupported", message: "Different login system" };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    const row = classifyFailure(domain, message, "Could not reach site");
+    if (row.ok) return { domain, ok: false, code: "other", message: "Could not reach site" };
+    return { domain, ok: false, code: row.code, message: row.message };
+  }
+}
+
+export async function resolveCasinoTargets(domains: string[]): Promise<CasinoTarget[]> {
+  const out: CasinoTarget[] = new Array(domains.length);
+  let cursor = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(6, domains.length) }, async () => {
+      for (;;) {
+        const i = cursor++;
+        if (i >= domains.length) return;
+        out[i] = await inspectCasino(domains[i] ?? "");
+      }
+    }),
+  );
+  return out;
+}
+
+export async function loadPublicCatalogue(rawDomains: string[]): Promise<CatalogueHit[]> {
+  const domains = rawDomains.slice(0, 4);
+  const targets = await resolveCasinoTargets(domains);
+  return Promise.all(
+    targets.map(async (target): Promise<CatalogueHit> => {
+      if (!target.ok) return { domain: target.domain, ok: false, message: target.message };
+      if (!target.merchantId) {
+        return { domain: target.domain, ok: false, message: "This site did not publish a bonus list" };
+      }
+      try {
+        const pub = await postApi(
+          target.host,
+          {
+            module: "/merchants/getPublicInfo",
+            merchantId: target.merchantId,
+            accessId: "",
+            accessToken: "",
+            walletIsAdmin: "",
+          },
+          AbortSignal.timeout(18_000),
+        );
+        if (pub.status !== "SUCCESS") {
+          return { domain: target.domain, ok: false, message: "Bonus list did not load" };
+        }
+        const body = pub.data && typeof pub.data === "object" ? (pub.data as { promotions?: unknown }) : null;
+        return { domain: target.domain, ok: true, bonuses: parsePublicPromotions(body?.promotions) };
+      } catch {
+        return { domain: target.domain, ok: false, message: "Could not reach the bonus list" };
+      }
+    }),
+  );
 }
 
 export async function fetchCasinoAccount(input: {
@@ -82,29 +166,16 @@ export async function fetchCasinoAccount(input: {
     return accountError(domain, "other", "Password should be 4–64 characters");
   }
 
+  const target = await inspectCasino(domain);
+  if (!target.ok) return accountError(target.domain, target.code, target.message);
+
   const signal = AbortSignal.timeout(18_000);
   try {
-    const home = await fetch(`https://${domain}/`, {
-      redirect: "follow",
-      signal,
-      headers: {
-        accept: "text/html",
-        "user-agent": UA,
-      },
-    });
-    const finalHost = normalizeDomain(new URL(home.url).hostname);
-    const host = isPublicDomain(finalHost) ? finalHost : domain;
-    const html = (await home.text()).slice(0, 500_000);
-    const merchantId = html.match(/MERCHANTID\s*=\s*(\d+)/)?.[1] ?? "";
-    if (!merchantId && !/api\/v1\/index\.php|cdn\.vefrop\.com\/mobile\/wallet\/app\.js/.test(html)) {
-      return accountError(domain, "unsupported", "Different login system");
-    }
-
     const login = await postApi(
-      host,
+      target.host,
       {
         module: "/users/login",
-        merchantId,
+        merchantId: target.merchantId,
         accessId: "",
         accessToken: "",
         walletIsAdmin: "",
@@ -131,10 +202,10 @@ export async function fetchCasinoAccount(input: {
     }
 
     const synced = await postApi(
-      host,
+      target.host,
       {
         module: "/users/syncData",
-        merchantId,
+        merchantId: target.merchantId,
         accessId,
         accessToken,
         walletIsAdmin: "",
@@ -156,10 +227,10 @@ export async function fetchCasinoAccount(input: {
     if (!syncedRow || !Array.isArray(syncedRow.bonus)) {
       try {
         const pub = await postApi(
-          host,
+          target.host,
           {
             module: "/merchants/getPublicInfo",
-            merchantId,
+            merchantId: target.merchantId,
             accessId: "",
             accessToken: "",
             walletIsAdmin: "",

@@ -10,12 +10,18 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as BonusesRouteImport } from './routes/bonuses'
 import { Route as FetchRouteImport } from './routes/fetch'
 import { Route as IntelRouteImport } from './routes/intel'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BonusesRoute = BonusesRouteImport.update({
+  id: '/bonuses',
+  path: '/bonuses',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FetchRoute = FetchRouteImport.update({
@@ -31,30 +37,34 @@ const IntelRoute = IntelRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/bonuses': typeof BonusesRoute
   '/fetch': typeof FetchRoute
   '/intel': typeof IntelRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/bonuses': typeof BonusesRoute
   '/fetch': typeof FetchRoute
   '/intel': typeof IntelRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/bonuses': typeof BonusesRoute
   '/fetch': typeof FetchRoute
   '/intel': typeof IntelRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/fetch' | '/intel'
+  fullPaths: '/' | '/bonuses' | '/fetch' | '/intel'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/fetch' | '/intel'
-  id: '__root__' | '/' | '/fetch' | '/intel'
+  to: '/' | '/bonuses' | '/fetch' | '/intel'
+  id: '__root__' | '/' | '/bonuses' | '/fetch' | '/intel'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  BonusesRoute: typeof BonusesRoute
   FetchRoute: typeof FetchRoute
   IntelRoute: typeof IntelRoute
 }
@@ -66,6 +76,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/bonuses': {
+      id: '/bonuses'
+      path: '/bonuses'
+      fullPath: '/bonuses'
+      preLoaderRoute: typeof BonusesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/fetch': {
@@ -87,6 +104,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  BonusesRoute: BonusesRoute,
   FetchRoute: FetchRoute,
   IntelRoute: IntelRoute,
 }

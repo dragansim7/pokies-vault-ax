@@ -1,5 +1,5 @@
 import { n as TSS_SERVER_FUNCTION, t as createServerFn } from "./ssr.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/casino.functions-mR7tJOFO.js
+//#region node_modules/.nitro/vite/services/ssr/assets/casino.functions-CFJJ-nXz.js
 var createServerRpc = (serverFnMeta, splitImportFn) => {
 	const url = "/_serverFn/" + serverFnMeta.id;
 	return Object.assign(splitImportFn, {
@@ -14,7 +14,7 @@ var fetchCasinoAccount_createServerFn_handler = createServerRpc({
 	filename: "src/lib/casino.functions.ts"
 }, (opts) => fetchCasinoAccount.__executeServer(opts));
 var fetchCasinoAccount = createServerFn({ method: "POST" }).validator((data) => data).handler(fetchCasinoAccount_createServerFn_handler, async ({ data }) => {
-	const { fetchCasinoAccount: run } = await import("./casino.impl.server-C1tlkFkI.mjs");
+	const { fetchCasinoAccount: run } = await import("./casino.impl.server-CWmf-w80.mjs");
 	return run(data);
 });
 var fetchCasinoBatchFn_createServerFn_handler = createServerRpc({
@@ -23,8 +23,17 @@ var fetchCasinoBatchFn_createServerFn_handler = createServerRpc({
 	filename: "src/lib/casino.functions.ts"
 }, (opts) => fetchCasinoBatchFn.__executeServer(opts));
 var fetchCasinoBatchFn = createServerFn({ method: "POST" }).validator((data) => data).handler(fetchCasinoBatchFn_createServerFn_handler, async ({ data }) => {
-	const { fetchCasinoBatch } = await import("./casino.impl.server-C1tlkFkI.mjs");
+	const { fetchCasinoBatch } = await import("./casino.impl.server-CWmf-w80.mjs");
 	return fetchCasinoBatch(data);
+});
+var resolveCasinoTargetsFn_createServerFn_handler = createServerRpc({
+	id: "ebe8291f863c16ed3e14ae9e7b736039ffc8d725902aaa7faa157aee4a434259",
+	name: "resolveCasinoTargetsFn",
+	filename: "src/lib/casino.functions.ts"
+}, (opts) => resolveCasinoTargetsFn.__executeServer(opts));
+var resolveCasinoTargetsFn = createServerFn({ method: "POST" }).validator((data) => data).handler(resolveCasinoTargetsFn_createServerFn_handler, async ({ data }) => {
+	const { resolveCasinoTargets } = await import("./casino.impl.server-CWmf-w80.mjs");
+	return resolveCasinoTargets(data.domains);
 });
 var fetchAllStatusesFn_createServerFn_handler = createServerRpc({
 	id: "bbaccc3e2239274bbee08332c5f8909ed44347b3bf93b9b721830ca8434ad3bf",
@@ -32,7 +41,7 @@ var fetchAllStatusesFn_createServerFn_handler = createServerRpc({
 	filename: "src/lib/casino.functions.ts"
 }, (opts) => fetchAllStatusesFn.__executeServer(opts));
 var fetchAllStatusesFn = createServerFn({ method: "POST" }).validator((data) => data ?? {}).handler(fetchAllStatusesFn_createServerFn_handler, async () => {
-	const { fetchAllStatuses } = await import("./casino.impl.server-C1tlkFkI.mjs");
+	const { fetchAllStatuses } = await import("./casino.impl.server-CWmf-w80.mjs");
 	return fetchAllStatuses();
 });
 var checkSiteStatus_createServerFn_handler = createServerRpc({
@@ -41,8 +50,8 @@ var checkSiteStatus_createServerFn_handler = createServerRpc({
 	filename: "src/lib/casino.functions.ts"
 }, (opts) => checkSiteStatus.__executeServer(opts));
 var checkSiteStatus = createServerFn({ method: "POST" }).validator((data) => data).handler(checkSiteStatus_createServerFn_handler, async ({ data }) => {
-	const { checkSiteStatus: run } = await import("./casino.impl.server-C1tlkFkI.mjs");
+	const { checkSiteStatus: run } = await import("./casino.impl.server-CWmf-w80.mjs");
 	return run(data.domain);
 });
 //#endregion
-export { checkSiteStatus_createServerFn_handler, fetchAllStatusesFn_createServerFn_handler, fetchCasinoAccount_createServerFn_handler, fetchCasinoBatchFn_createServerFn_handler };
+export { checkSiteStatus_createServerFn_handler, fetchAllStatusesFn_createServerFn_handler, fetchCasinoAccount_createServerFn_handler, fetchCasinoBatchFn_createServerFn_handler, resolveCasinoTargetsFn_createServerFn_handler };

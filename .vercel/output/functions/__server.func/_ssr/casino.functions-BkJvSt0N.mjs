@@ -1,9 +1,9 @@
 import { i as __toESM } from "../_runtime.mjs";
 import { G as isRedirect, S as require_jsx_runtime, Y as require_react, b as Link, p as useRouterState, x as useRouter } from "../_libs/@tanstack/react-router+[...].mjs";
 import { n as TSS_SERVER_FUNCTION, r as getServerFnById, t as createServerFn } from "./ssr.mjs";
-import { d as Palette, f as Menu, i as UserRound, l as Radar, n as X, o as Trash2, s as Shield, t as Zap, u as Plus } from "../_libs/lucide-react.mjs";
-import { n as useVault, o as THEMES } from "./router-ColQBS1E.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/casino.functions-BDU87UJW.js
+import { c as Shield, d as Plus, f as Palette, i as UserRound, n as X, o as Trash2, p as Menu, t as Zap, u as Radar } from "../_libs/lucide-react.mjs";
+import { a as THEMES, n as useVault } from "./router-C9f5wAn0.mjs";
+//#region node_modules/.nitro/vite/services/ssr/assets/casino.functions-BkJvSt0N.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 function useServerFn(serverFn) {
@@ -265,7 +265,8 @@ var createSsrRpc = (functionId) => {
 };
 createServerFn({ method: "POST" }).validator((data) => data).handler(createSsrRpc("31be5b99ae9ca7c2d3b8e9741a2c29430bf663b3f4938f9ae4aa643a22c14f45"));
 var fetchCasinoBatchFn = createServerFn({ method: "POST" }).validator((data) => data).handler(createSsrRpc("461c07027b2a8c58a6fe2f0a00682e43be45789d096410e713e3e5b3f4767738"));
+var resolveCasinoTargetsFn = createServerFn({ method: "POST" }).validator((data) => data).handler(createSsrRpc("ebe8291f863c16ed3e14ae9e7b736039ffc8d725902aaa7faa157aee4a434259"));
 var fetchAllStatusesFn = createServerFn({ method: "POST" }).validator((data) => data ?? {}).handler(createSsrRpc("bbaccc3e2239274bbee08332c5f8909ed44347b3bf93b9b721830ca8434ad3bf"));
 var checkSiteStatus = createServerFn({ method: "POST" }).validator((data) => data).handler(createSsrRpc("74839dc983bbaacaaaed2f59d289f93c284acf8e34a8e5f8f2b0a8b1a890e640"));
 //#endregion
-export { useServerFn as a, fetchCasinoBatchFn as i, checkSiteStatus as n, fetchAllStatusesFn as r, AppFrame as t };
+export { resolveCasinoTargetsFn as a, fetchCasinoBatchFn as i, checkSiteStatus as n, useServerFn as o, fetchAllStatusesFn as r, AppFrame as t };

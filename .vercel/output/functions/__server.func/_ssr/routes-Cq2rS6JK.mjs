@@ -1,10 +1,10 @@
 import { i as __toESM } from "../_runtime.mjs";
 import { S as require_jsx_runtime, Y as require_react } from "../_libs/@tanstack/react-router+[...].mjs";
-import { _ as Bookmark, c as Search, m as Eye, n as X, r as Wallet, v as ArrowUpDown } from "../_libs/lucide-react.mjs";
-import { a as compareSites, i as chosenBonus, n as useVault, s as workingSites } from "./router-ColQBS1E.mjs";
-import { a as useServerFn, n as checkSiteStatus, r as fetchAllStatusesFn, t as AppFrame } from "./casino.functions-BDU87UJW.mjs";
-import { n as formatAdded, r as money, t as SiteIcon } from "./format-D9-wnKzf.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/routes-ClY-vDJc.js
+import { h as Eye, l as Search, n as X, r as Wallet, x as ArrowUpDown } from "../_libs/lucide-react.mjs";
+import { i as compareSites, n as useVault, o as visibleSites } from "./router-C9f5wAn0.mjs";
+import { n as checkSiteStatus, o as useServerFn, r as fetchAllStatusesFn, t as AppFrame } from "./casino.functions-BkJvSt0N.mjs";
+import { t as AccountCard } from "./account-card-CPdVCeql.mjs";
+//#region node_modules/.nitro/vite/services/ssr/assets/routes-Cq2rS6JK.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 var GROUP_LABEL = {
@@ -14,14 +14,6 @@ var GROUP_LABEL = {
 	share: "Instant share bonuses",
 	latest: "Latest",
 	custom: "Added by you"
-};
-var STATUS_LABEL = {
-	checking: "Checking",
-	live: "Live",
-	slow: "Slow",
-	redirect: "Redirect",
-	dead: "Down",
-	unknown: "Unknown"
 };
 var STATUS_CACHE_KEY = "vault-statuses";
 var STATUS_CACHE_TTL = 9e5;
@@ -52,10 +44,6 @@ function bonusSortName(mode) {
 	if (mode === "rebate") return "Rebate";
 	return "Share";
 }
-function bonusOf(row, mode) {
-	if (mode === "none") return null;
-	return chosenBonus(row, mode);
-}
 function Directory() {
 	const { state, patch, markVisited, toggleMine } = useVault();
 	const statusFn = useServerFn(checkSiteStatus);
@@ -76,7 +64,7 @@ function Directory() {
 		for (const row of state.lastFetch?.rows ?? []) map.set(row.domain, row);
 		return map;
 	}, [state.lastFetch]);
-	const sites = (0, import_react.useMemo)(() => workingSites(state.custom, state.removed), [state.custom, state.removed]);
+	const sites = (0, import_react.useMemo)(() => visibleSites(state), [state]);
 	const filtered = (0, import_react.useMemo)(() => {
 		const q = query.trim().toLowerCase();
 		let list = sites.filter((site) => {
@@ -155,57 +143,18 @@ function Directory() {
 			cancelled = true;
 		};
 	}, [domainKey]);
-	function renderCard(site, compact = false) {
+	function renderCard(site, index) {
 		const row = fetchMap.get(site.domain);
-		const status = statuses[site.domain] ?? "checking";
-		const bonus = row?.ok ? bonusOf(row, state.bonusMode) : null;
-		return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", {
-			className: compact ? "site-card compact" : "site-card",
-			children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("a", {
-				className: "site-hit",
-				href: `https://${site.domain}/`,
-				target: "_blank",
-				rel: "noreferrer",
-				onClick: () => markVisited(site.domain),
-				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(SiteIcon, { domain: site.domain }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
-					className: "site-copy",
-					children: [
-						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-							className: "site-domain",
-							children: site.domain
-						}),
-						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
-							className: `site-meta ${status}`,
-							children: [
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("i", {}),
-								STATUS_LABEL[status],
-								site.addedAt ? ` · ${formatAdded(site.addedAt)}` : ""
-							]
-						}),
-						state.wallets ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-							className: row && !row.ok ? "wallet-line warn" : "wallet-line",
-							children: !row ? "No fetch yet" : row.ok ? `${money(row.cash)} ${row.cashWalletName}` : row.message
-						}) : null,
-						bonus ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
-							className: "wallet-line",
-							children: [
-								bonus.name,
-								" ",
-								bonus.amountDisplay
-							]
-						}) : null
-					]
-				})]
-			}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-				type: "button",
-				className: state.mine.includes(site.domain) ? "pin on" : "pin",
-				"aria-label": state.mine.includes(site.domain) ? `Remove ${site.domain} from my accounts` : `Save ${site.domain}`,
-				onClick: () => toggleMine(site.domain),
-				children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Bookmark, {
-					size: 16,
-					fill: state.mine.includes(site.domain) ? "currentColor" : "none"
-				})
-			})]
+		const account = row?.ok ? row : null;
+		return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(AccountCard, {
+			domain: site.domain,
+			rank: index + 1,
+			addedAt: site.addedAt,
+			status: statuses[site.domain] ?? "checking",
+			account,
+			saved: state.mine.includes(site.domain),
+			onVisit: () => markVisited(site.domain),
+			onToggleSave: () => toggleMine(site.domain)
 		}, site.domain);
 	}
 	const visitedCount = sites.filter((site) => state.visited.includes(site.domain)).length;
@@ -318,7 +267,7 @@ function Directory() {
 					"unverified"
 				].map((group) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: GROUP_LABEL[group] }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 					className: "top-col",
-					children: filtered.filter((site) => site.group === group).map((site) => renderCard(site, true))
+					children: filtered.filter((site) => site.group === group).map((site, index) => renderCard(site, index))
 				})] }, group))
 			})
 		}), [
@@ -337,11 +286,11 @@ function Directory() {
 				]
 			}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 				className: "cards",
-				children: items.map((site) => renderCard(site))
+				children: items.map((site, index) => renderCard(site, index))
 			})] }, group);
 		})] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 			className: state.view === "one" ? "cards view-one" : state.view === "two" ? "cards view-two" : "cards",
-			children: filtered.map((site) => renderCard(site, state.view !== "one"))
+			children: filtered.map((site, index) => renderCard(site, index))
 		}),
 		sortOpen ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 			className: "modal-backdrop",

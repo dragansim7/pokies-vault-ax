@@ -1,16 +1,145 @@
 import { i as __toESM } from "../_runtime.mjs";
 import { S as require_jsx_runtime, Y as require_react, b as Link } from "../_libs/@tanstack/react-router+[...].mjs";
 import { n as normalizeDomain, t as isPublicDomain } from "./domain-CILCWuBu.mjs";
-import { g as ChevronLeft, h as EyeOff, m as Eye, p as LoaderCircle } from "../_libs/lucide-react.mjs";
-import { a as compareSites, i as chosenBonus, n as useVault, r as catalogMeta, s as workingSites } from "./router-ColQBS1E.mjs";
-import { a as useServerFn, i as fetchCasinoBatchFn, t as AppFrame } from "./casino.functions-BDU87UJW.mjs";
-import { n as formatAdded, r as money, t as SiteIcon } from "./format-D9-wnKzf.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/fetch-DciGfzDy.js
+import { n as parseSyncUser, t as accountError } from "./parse-account-Bm3y7cgd.mjs";
+import { g as EyeOff, h as Eye, m as LoaderCircle, v as ChevronLeft } from "../_libs/lucide-react.mjs";
+import { i as compareSites, n as useVault, o as visibleSites, r as catalogMeta } from "./router-C9f5wAn0.mjs";
+import { a as resolveCasinoTargetsFn, i as fetchCasinoBatchFn, o as useServerFn, t as AppFrame } from "./casino.functions-BkJvSt0N.mjs";
+import { i as money, n as SiteIcon, r as formatAdded, t as AccountCard } from "./account-card-CPdVCeql.mjs";
+//#region node_modules/.nitro/vite/services/ssr/assets/fetch-D0TBAYFb.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
+function messageOf(data) {
+	if (!data || typeof data !== "object") return "";
+	const message = data.message;
+	return typeof message === "string" ? message : "";
+}
+function classifyFailure(domain, message, fallback) {
+	const text = message.toLowerCase();
+	if (text.includes("invalid login") || text.includes("invalid password")) return accountError(domain, "invalid_login", "Not your account");
+	if (text.includes("captcha")) return accountError(domain, "captcha", "Site asked for a captcha");
+	if (text.includes("bad-json")) return accountError(domain, "unreachable", "Site did not return account data");
+	if (text.includes("abort") || text.includes("timeout")) return accountError(domain, "timeout", "Timed out");
+	return accountError(domain, "other", fallback);
+}
+function isInstalledPhone() {
+	if (typeof window === "undefined") return false;
+	const standalone = navigator.standalone === true || window.matchMedia("(display-mode: standalone)").matches || window.matchMedia("(display-mode: fullscreen)").matches;
+	const phone = window.matchMedia("(max-width: 900px)").matches || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+	return standalone && phone;
+}
+async function postApi(host, fields, signal) {
+	const text = await (await fetch(`https://${host}/api/v1/index.php`, {
+		method: "POST",
+		signal,
+		headers: {
+			"content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+			accept: "application/json,text/plain,*/*"
+		},
+		body: new URLSearchParams(fields)
+	})).text();
+	try {
+		return JSON.parse(text);
+	} catch {
+		throw new Error("bad-json");
+	}
+}
+async function fetchOne(target, phone, password, signal) {
+	const domain = target.domain;
+	if (!/^[0-9+]{6,20}$/.test(phone)) return accountError(domain, "other", "Enter the mobile number you use on these sites");
+	if (password.length < 4 || password.length > 64) return accountError(domain, "other", "Password should be 4–64 characters");
+	try {
+		const login = await postApi(target.host, {
+			module: "/users/login",
+			merchantId: target.merchantId,
+			accessId: "",
+			accessToken: "",
+			walletIsAdmin: "",
+			mobile: phone,
+			password
+		}, signal);
+		if (login.status !== "SUCCESS") return classifyFailure(domain, messageOf(login.data), "Could not sign in");
+		const session = login.data;
+		const accessId = session && typeof session.id === "string" ? session.id : "";
+		const accessToken = session && typeof session.token === "string" ? session.token : "";
+		if (!accessId || !accessToken) return accountError(domain, "other", "Sign-in did not return a session");
+		const synced = await postApi(target.host, {
+			module: "/users/syncData",
+			merchantId: target.merchantId,
+			accessId,
+			accessToken,
+			walletIsAdmin: "",
+			background: "1"
+		}, signal);
+		if (synced.status !== "SUCCESS") return classifyFailure(domain, messageOf(synced.data), "Signed in, but balances did not load");
+		const syncedRow = synced.data && typeof synced.data === "object" ? synced.data : null;
+		let promotions;
+		if (!syncedRow || !Array.isArray(syncedRow.bonus)) try {
+			const pub = await postApi(target.host, {
+				module: "/merchants/getPublicInfo",
+				merchantId: target.merchantId,
+				accessId: "",
+				accessToken: "",
+				walletIsAdmin: ""
+			}, signal);
+			promotions = (pub.data && typeof pub.data === "object" ? pub.data : null)?.promotions;
+		} catch {
+			promotions = void 0;
+		}
+		return parseSyncUser(domain, synced.data, promotions);
+	} catch (error) {
+		if (signal?.aborted || error instanceof DOMException && error.name === "AbortError") throw error;
+		return classifyFailure(domain, error instanceof Error ? error.message : "", "Could not reach site");
+	}
+}
+async function fetchAccountsOnDevice(input) {
+	if (input.signal?.aborted) throw new DOMException("Aborted", "AbortError");
+	const targets = await input.resolve(input.domains);
+	const out = new Array(input.domains.length);
+	let cursor = 0;
+	await Promise.all(Array.from({ length: Math.min(3, input.domains.length) }, async () => {
+		for (;;) {
+			if (input.signal?.aborted) throw new DOMException("Aborted", "AbortError");
+			const index = cursor++;
+			if (index >= input.domains.length) return;
+			const domain = normalizeDomain(input.domains[index] ?? "");
+			const target = targets[index];
+			if (!target || !target.ok) {
+				const code = target && !target.ok ? target.code : "other";
+				const message = target && !target.ok ? target.message : "Check failed";
+				out[index] = accountError(target?.domain || domain, code, message);
+				continue;
+			}
+			out[index] = await fetchOne(target, input.phone, input.password, input.signal);
+		}
+	}));
+	return out;
+}
 var PAGE = 12;
 var BATCH = 10;
 var RUN_KEY = "vault-run";
+var IDLE_LIVE = {
+	phase: "idle",
+	fromPhone: false,
+	done: 0,
+	total: 0,
+	startedAt: null,
+	finishedAt: null,
+	fetchMs: 0,
+	attempts: 0,
+	retries: 0,
+	peakQueue: 0
+};
+function formatSpan(ms) {
+	const seconds = Math.max(0, Math.round(ms / 1e3));
+	const minutes = Math.floor(seconds / 60);
+	const rest = seconds % 60;
+	if (minutes <= 0) return `${rest}s`;
+	return `${minutes}m ${rest}s`;
+}
+function viaLabel(fromPhone) {
+	return fromPhone ? "From this phone" : "From the vault";
+}
 function readRun() {
 	if (typeof localStorage === "undefined") return null;
 	try {
@@ -83,13 +212,6 @@ function planBatches(domains, form, saved) {
 		unseen: form.length ? 0 : fresh.length
 	};
 }
-var TONES = [
-	"tone-0",
-	"tone-1",
-	"tone-2",
-	"tone-3",
-	"tone-4"
-];
 function cents(amount) {
 	return Math.round(amount * 100) / 100;
 }
@@ -184,49 +306,7 @@ function deltaClass(note) {
 	if (to < from - .009) return "delta down";
 	return "delta";
 }
-function ResultCard({ row, bonus }) {
-	const boxes = boxesOf(row);
-	const total = totalsOf(row).total;
-	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", {
-		className: "result-card",
-		children: [
-			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-				className: "result-head",
-				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
-					className: "result-title",
-					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(SiteIcon, { domain: row.domain }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: row.domain })]
-				}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
-					className: "result-side",
-					children: [total > 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: money(total) }) : null, /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", {
-						href: `https://${row.domain}/`,
-						target: "_blank",
-						rel: "noreferrer",
-						children: "Open"
-					})]
-				})]
-			}),
-			bonus ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
-				className: "hint",
-				children: [
-					bonus.name,
-					" ",
-					bonus.amountDisplay
-				]
-			}) : null,
-			boxes.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-				className: "promo-stack",
-				children: boxes.map((box, index) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-					className: `promo-box ${TONES[index % TONES.length]}`,
-					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: box.label }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: money(box.amount) })]
-				}, `${box.kind}-${box.label}-${index}`))
-			}) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
-				className: "hint",
-				children: "No balance or claimable promo."
-			})
-		]
-	});
-}
-function PageList({ rows, bonusMode }) {
+function PageList({ rows }) {
 	const [page, setPage] = (0, import_react.useState)(0);
 	const pages = Math.max(1, Math.ceil(rows.length / PAGE));
 	const safe = Math.min(page, pages - 1);
@@ -257,17 +337,31 @@ function PageList({ rows, bonusMode }) {
 		]
 	}) : null, /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 		className: "stack",
-		children: slice.map((row) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ResultCard, {
-			row,
-			bonus: bonusMode === "none" ? null : chosenBonus(row, bonusMode)
+		children: slice.map((row, index) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(AccountCard, {
+			domain: row.domain,
+			rank: safe * PAGE + index + 1,
+			addedAt: catalogMeta(row.domain).addedAt,
+			account: row
 		}, row.domain))
 	})] });
 }
+var CODE_LABEL = {
+	captcha: "Captcha",
+	invalid_login: "Not your account",
+	timeout: "Timed out",
+	unreachable: "Unreachable",
+	blocked: "Page blocked",
+	empty: "Empty page",
+	unsupported: "Different login",
+	other: "Other"
+};
 var CODE_ORDER = [
 	"captcha",
 	"invalid_login",
 	"timeout",
 	"unreachable",
+	"blocked",
+	"empty",
 	"unsupported",
 	"other"
 ];
@@ -301,7 +395,7 @@ function NeedsAttention({ savedAt, rows, marks, onToggle }) {
 			counts.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
 				className: "attention-counts",
 				children: counts.map((item) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
-					item.code,
+					CODE_LABEL[item.code],
 					" ",
 					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: item.count })
 				] }, item.code))
@@ -318,7 +412,7 @@ function NeedsAttention({ savedAt, rows, marks, onToggle }) {
 			groups.map((group) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 				className: "attention-group",
 				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("h3", { children: [
-					group.code,
+					CODE_LABEL[group.code],
 					" · ",
 					group.rows.length
 				] }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
@@ -345,7 +439,7 @@ function NeedsAttention({ savedAt, rows, marks, onToggle }) {
 								}),
 								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
 									className: "attention-code",
-									children: row.code
+									children: CODE_LABEL[row.code]
 								}),
 								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
 									className: "attention-message",
@@ -372,6 +466,8 @@ function NeedsAttention({ savedAt, rows, marks, onToggle }) {
 function Fetcher() {
 	const { state, patch, rememberAccount, rememberLogins, saveFetch } = useVault();
 	const fetchBatch = useServerFn(fetchCasinoBatchFn);
+	const resolveTargets = useServerFn(resolveCasinoTargetsFn);
+	const [onDevice, setOnDevice] = (0, import_react.useState)(false);
 	const [showPassword, setShowPassword] = (0, import_react.useState)(false);
 	const [advanced, setAdvanced] = (0, import_react.useState)(false);
 	const [single, setSingle] = (0, import_react.useState)("");
@@ -381,6 +477,8 @@ function Fetcher() {
 		done: 0,
 		total: 0
 	});
+	const [live, setLive] = (0, import_react.useState)(IDLE_LIVE);
+	const [now, setNow] = (0, import_react.useState)(() => Date.now());
 	const [rows, setRows] = (0, import_react.useState)(state.lastFetch?.rows ?? []);
 	const [showErrors, setShowErrors] = (0, import_react.useState)(false);
 	const [confirmScan, setConfirmScan] = (0, import_react.useState)(false);
@@ -388,9 +486,21 @@ function Fetcher() {
 	const [comparedAt, setComparedAt] = (0, import_react.useState)(null);
 	const [pendingRun, setPendingRun] = (0, import_react.useState)(null);
 	const stopRef = (0, import_react.useRef)(null);
+	const onDeviceRef = (0, import_react.useRef)(false);
+	const liveRef = (0, import_react.useRef)(live);
 	const rowsRef = (0, import_react.useRef)(rows);
 	rowsRef.current = rows;
-	const sites = (0, import_react.useMemo)(() => workingSites(state.custom, state.removed), [state.custom, state.removed]);
+	(0, import_react.useEffect)(() => {
+		const installed = isInstalledPhone();
+		onDeviceRef.current = installed;
+		setOnDevice(installed);
+	}, []);
+	(0, import_react.useEffect)(() => {
+		if (live.phase !== "running") return;
+		const id = window.setInterval(() => setNow(Date.now()), 500);
+		return () => window.clearInterval(id);
+	}, [live.phase]);
+	const sites = (0, import_react.useMemo)(() => visibleSites(state), [state]);
 	(0, import_react.useEffect)(() => {
 		const saved = readRun();
 		if (saved && saved.done.length < sites.length) setPendingRun(saved);
@@ -417,6 +527,7 @@ function Fetcher() {
 	const valid = rows.filter((row) => row.ok && row.hasData);
 	const empty = rows.filter((row) => row.ok && !row.hasData);
 	const errors = rows.filter((row) => !row.ok);
+	const unsupportedDomains = errors.filter((row) => row.code === "unsupported").map((row) => row.domain);
 	const orderOf = (a, b) => compareSites(catalogMeta(a.domain), catalogMeta(b.domain), a, b, state.sort, state.bonusMode);
 	const ranked = [...valid].sort(orderOf);
 	const quiet = [...empty].sort(orderOf);
@@ -430,7 +541,7 @@ function Fetcher() {
 		} : item);
 		patch({ fallbacks });
 	}
-	async function run(domains, resumeFrom) {
+	async function run(domains, resumeFrom, mergeBase) {
 		const unique = Array.from(new Set(domains));
 		if (!unique.length) {
 			setStatus("No sites to check. Save accounts from the list, add a domain, or scan.");
@@ -441,14 +552,31 @@ function Fetcher() {
 			setStatus("Enter your phone number and password before fetching.");
 			return;
 		}
+		const fromPhone = onDeviceRef.current;
+		const merging = Boolean(mergeBase);
 		const previousAt = state.lastFetch?.at ?? null;
 		const previous = new Map((state.lastFetch?.rows ?? []).filter((row) => row.ok).map((row) => [row.domain, row]));
 		stopRef.current?.abort();
 		const controller = new AbortController();
 		stopRef.current = controller;
-		const collected = resumeFrom ? [...resumeFrom.rows] : [];
+		const collected = resumeFrom ? [...resumeFrom.rows] : mergeBase ? [...mergeBase] : [];
 		const done = resumeFrom ? [...resumeFrom.done] : [];
 		const total = resumeFrom ? sites.length : unique.length - unseen;
+		const started = {
+			phase: "running",
+			fromPhone,
+			done: done.length,
+			total,
+			startedAt: Date.now(),
+			finishedAt: null,
+			fetchMs: 0,
+			attempts: 0,
+			retries: 0,
+			peakQueue: Math.max(0, total - done.length)
+		};
+		liveRef.current = started;
+		setLive(started);
+		setNow(started.startedAt ?? Date.now());
 		setRunning(true);
 		setShowErrors(false);
 		setDiffs([]);
@@ -458,7 +586,7 @@ function Fetcher() {
 			done: done.length,
 			total
 		});
-		setStatus(resumeFrom ? `Resuming ${done.length} of ${sites.length}…` : unique.length === 1 ? `Checking ${unique[0]}…` : unseen ? `Checking ${total} sites that already have a saved login…` : `Checking ${unique.length} sites…`);
+		setStatus(resumeFrom ? `Resuming ${done.length} of ${sites.length}…` : merging ? `Retrying ${unique.length} unsupported sites…` : unique.length === 1 ? `Checking ${unique[0]}…` : unseen ? `Checking ${total} sites that already have a saved login…` : `Checking ${unique.length} sites…`);
 		const publish = (batchRows, loginNotes) => {
 			rememberLogins(loginNotes);
 			for (const row of batchRows) {
@@ -474,13 +602,23 @@ function Fetcher() {
 				done: done.length,
 				total
 			});
-			const checkpoint = {
-				at: Date.now(),
-				done: [...done],
-				rows: snapshot
+			const queue = Math.max(0, total - done.length);
+			liveRef.current = {
+				...liveRef.current,
+				done: done.length,
+				total,
+				peakQueue: Math.max(liveRef.current.peakQueue, queue)
 			};
-			writeRun(checkpoint);
-			setPendingRun(done.length < sites.length ? checkpoint : null);
+			setLive(liveRef.current);
+			if (!merging) {
+				const checkpoint = {
+					at: Date.now(),
+					done: [...done],
+					rows: snapshot
+				};
+				writeRun(checkpoint);
+				setPendingRun(done.length < sites.length ? checkpoint : null);
+			}
 		};
 		let cursor = 0;
 		const worker = async () => {
@@ -497,7 +635,17 @@ function Fetcher() {
 				try {
 					for (const cred of batch.creds) {
 						if (controller.signal.aborted || !pending.length) break;
-						const result = await fetchBatch({
+						const startedTry = Date.now();
+						const result = fromPhone ? await fetchAccountsOnDevice({
+							domains: pending,
+							phone: cred.phone,
+							password: cred.password,
+							signal: controller.signal,
+							resolve: (domains) => resolveTargets({
+								data: { domains },
+								signal: controller.signal
+							})
+						}) : await fetchBatch({
 							data: {
 								domains: pending,
 								phone: cred.phone,
@@ -516,6 +664,13 @@ function Fetcher() {
 						} else if (row.code !== "invalid_login") settled.set(row.domain, row);
 						else retry.push(row.domain);
 						for (const domain of pending) if (!returned.has(domain) && !settled.has(domain)) retry.push(domain);
+						liveRef.current = {
+							...liveRef.current,
+							fetchMs: liveRef.current.fetchMs + (Date.now() - startedTry),
+							attempts: liveRef.current.attempts + Math.max(result.length, pending.length),
+							retries: liveRef.current.retries + retry.length
+						};
+						setLive(liveRef.current);
 						pending = retry;
 					}
 				} catch (error) {
@@ -549,12 +704,12 @@ function Fetcher() {
 				}), loginNotes);
 			}
 		};
-		await Promise.all(Array.from({ length: Math.min(4, batches.length) }, () => worker()));
+		await Promise.all(Array.from({ length: Math.min(fromPhone ? 2 : 4, batches.length) }, () => worker()));
 		const stopped = controller.signal.aborted;
 		const finalRows = [...collected].sort((a, b) => a.domain.localeCompare(b.domain));
 		setRows(finalRows);
 		saveFetch(finalRows);
-		if (!stopped && done.length >= sites.length) {
+		if (!merging && !stopped && done.length >= sites.length) {
 			try {
 				localStorage.removeItem(RUN_KEY);
 			} catch {}
@@ -569,6 +724,13 @@ function Fetcher() {
 		setDiffs(notes);
 		setComparedAt(previousAt);
 		const signedIn = finalRows.filter((row) => row.ok).length;
+		liveRef.current = {
+			...liveRef.current,
+			phase: stopped ? "stopped" : "done",
+			finishedAt: Date.now(),
+			done: done.length
+		};
+		setLive(liveRef.current);
 		setStatus(stopped ? "Stopped. Successful sign-ins stay in My accounts." : `Done. ${signedIn} of ${finalRows.length} signed in. Only those are kept as your accounts.`);
 		setRunning(false);
 	}
@@ -576,6 +738,7 @@ function Fetcher() {
 	const mineTargets = (state.mine.length ? state.mine : sites.filter((site) => state.visited.includes(site.domain)).map((site) => site.domain)).filter((domain) => allowed.has(domain));
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
 		className: "stack",
+		"data-fetch-from": onDevice ? "phone" : "server",
 		children: [
 			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Link, {
 				to: "/",
@@ -671,7 +834,7 @@ function Fetcher() {
 					}, index)) : null,
 					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
 						className: "hint",
-						children: "Saved only in this browser. The server uses them to sign in and does not keep them."
+						children: onDevice ? "Saved only on this phone. Sign-in goes straight from this phone to the site. The password is not sent through the vault. Up and down checks still use the vault." : "Saved only in this browser. The server uses them to sign in and does not keep them."
 					}),
 					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 						className: "actions",
@@ -686,6 +849,13 @@ function Fetcher() {
 									" Fetch my accounts",
 									mineTargets.length ? ` (${mineTargets.length})` : ""
 								]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+								type: "button",
+								className: "btn",
+								disabled: running || unsupportedDomains.length === 0,
+								onClick: () => void run(unsupportedDomains, void 0, rows),
+								children: ["Retry unsupported", unsupportedDomains.length ? ` (${unsupportedDomains.length})` : ""]
 							}),
 							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 								type: "button",
@@ -755,9 +925,81 @@ function Fetcher() {
 							")"
 						]
 					}) : null,
-					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "panel live-fetch",
+						children: [
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", {
+								className: "section-label",
+								children: "Live fetch"
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+								className: "live-via",
+								children: viaLabel(live.phase === "idle" ? onDevice : live.fromPhone)
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+								className: "live-count",
+								children: [
+									live.phase === "idle" ? 0 : live.done,
+									" / ",
+									live.total,
+									" processed · ",
+									live.total ? Math.round((live.phase === "idle" ? 0 : live.done) / live.total * 100) : 0,
+									"%"
+								]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+								className: "live-meta",
+								children: live.phase === "running" ? "Running" : live.phase === "done" ? "Done" : live.phase === "stopped" ? "Stopped" : "Idle"
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+								className: "live-meta",
+								children: [
+									live.phase === "idle" ? 0 : rows.filter((row) => row.ok).length,
+									" signed in · ",
+									live.phase === "idle" ? 0 : errors.length,
+									" rejected · ",
+									live.phase === "idle" ? 0 : ranked.length,
+									" with a balance · ",
+									live.phase === "idle" ? 0 : quiet.length,
+									" nothing waiting"
+								]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+								className: "live-meta",
+								children: [
+									"Queue ",
+									Math.max(0, live.total - (live.phase === "idle" ? 0 : live.done)),
+									" · peak ",
+									live.peakQueue
+								]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+								className: "live-meta",
+								children: [
+									"Wall ",
+									live.startedAt ? formatSpan((live.finishedAt ?? now) - live.startedAt) : "0s",
+									" · sign-in ",
+									formatSpan(live.fetchMs)
+								]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+								className: "live-meta",
+								children: [
+									"Retries ",
+									live.retries,
+									" · attempts ",
+									live.attempts
+								]
+							})
+						]
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
 						className: "progress-line",
-						children: status
+						children: [
+							viaLabel(live.phase === "idle" ? onDevice : live.fromPhone),
+							". ",
+							status
+						]
 					}),
 					progress.total > 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 						className: "bar",
@@ -809,10 +1051,7 @@ function Fetcher() {
 						className: "hint waiting-split",
 						children: ["Saved ", formatAdded(new Date(state.lastFetch.at).toISOString())]
 					}) : null,
-					ranked.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(PageList, {
-						rows: ranked,
-						bonusMode: state.bonusMode
-					}) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+					ranked.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(PageList, { rows: ranked }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
 						className: "hint",
 						children: "Nothing with a balance or bonus yet."
 					})
@@ -821,10 +1060,7 @@ function Fetcher() {
 			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("h2", {
 				className: "section-label",
 				children: ["Signed in, nothing waiting · ", empty.length]
-			}), quiet.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(PageList, {
-				rows: quiet,
-				bonusMode: state.bonusMode
-			}) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+			}), quiet.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(PageList, { rows: quiet }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
 				className: "hint",
 				children: "None."
 			})] }),
