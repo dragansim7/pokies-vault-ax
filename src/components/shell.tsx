@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Gift, Menu, Palette, Plus, Radar, Shield, Trash2, UserRound, X, Zap } from "lucide-react";
+import { Gift, Home, Menu, Plus, Radar, Trash2, UserRound, X, Zap } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { useVault } from "@/components/vault";
 import { THEMES, type ThemeId } from "@/lib/themes";
@@ -8,7 +8,6 @@ export function AppFrame({ children }: { children: ReactNode }) {
   const path = useRouterState({ select: (state) => state.location.pathname });
   const { state, addDomain, clearAll, patch } = useVault();
   const [menu, setMenu] = useState(false);
-  const [tab, setTab] = useState<"list" | "theme">("list");
   const [adding, setAdding] = useState(false);
   const [domain, setDomain] = useState("");
   const [error, setError] = useState("");
@@ -74,51 +73,80 @@ export function AppFrame({ children }: { children: ReactNode }) {
           <aside className="drawer" onClick={(event) => event.stopPropagation()}>
             <div className="header-row">
               <div>
-                <h2>Settings</h2>
-                <p>Your list only. No credits, no rentals.</p>
+                <h2>Menu</h2>
+                <p className="menu-note">Password stays on this device.</p>
               </div>
               <button type="button" className="pin" aria-label="Close menu" onClick={() => setMenu(false)}>
                 <X size={18} />
               </button>
             </div>
-            <div className="drawer-tabs" role="tablist">
+
+            <section className="menu-group">
+              <h3 className="menu-label">Go</h3>
+              <Link to="/" className={path === "/" ? "drawer-item on" : "drawer-item"} onClick={() => setMenu(false)}>
+                <Home size={18} />
+                <span>
+                  <strong>Main list</strong>
+                  <small>Domains and account cards</small>
+                </span>
+              </Link>
+              <Link to="/fetch" className={path === "/fetch" ? "drawer-item on" : "drawer-item"} onClick={() => setMenu(false)}>
+                <Zap size={18} />
+                <span>
+                  <strong>Fetcher</strong>
+                  <small>Balances, share, referral, rebate</small>
+                </span>
+              </Link>
+              <Link to="/intel" className={path === "/intel" ? "drawer-item on" : "drawer-item"} onClick={() => setMenu(false)}>
+                <Radar size={18} />
+                <span>
+                  <strong>Domain Intel</strong>
+                  <small>Add, remove, and check domains</small>
+                </span>
+              </Link>
+              <Link to="/bonuses" className={path === "/bonuses" ? "drawer-item on" : "drawer-item"} onClick={() => setMenu(false)}>
+                <Gift size={18} />
+                <span>
+                  <strong>Bonus Finder</strong>
+                  <small>Signup, share, daily, birthday</small>
+                </span>
+              </Link>
+            </section>
+
+            <section className="menu-group">
+              <h3 className="menu-label">List</h3>
               <button
                 type="button"
-                role="tab"
-                aria-selected={tab === "list"}
-                className={tab === "list" ? "drawer-tab on" : "drawer-tab"}
-                onClick={() => setTab("list")}
+                className="drawer-item"
+                onClick={() => {
+                  patch({ mineOnly: true });
+                  setMenu(false);
+                }}
               >
-                List
+                <UserRound size={18} />
+                <span>
+                  <strong>My accounts</strong>
+                  <small>{state.mine.length} site{state.mine.length === 1 ? "" : "s"} saved</small>
+                </span>
               </button>
-              <Link
-                to="/intel"
-                className={path === "/intel" ? "drawer-tab on" : "drawer-tab"}
-                onClick={() => setMenu(false)}
-              >
-                <Radar size={14} />
-                Domain Intel
-              </Link>
-              <Link
-                to="/bonuses"
-                className={path === "/bonuses" ? "drawer-tab on" : "drawer-tab"}
-                onClick={() => setMenu(false)}
-              >
-                <Gift size={14} />
-                Bonus Finder
-              </Link>
               <button
                 type="button"
-                role="tab"
-                aria-selected={tab === "theme"}
-                className={tab === "theme" ? "drawer-tab on" : "drawer-tab"}
-                onClick={() => setTab("theme")}
+                className="drawer-item"
+                onClick={() => {
+                  setAdding(true);
+                  setMenu(false);
+                }}
               >
-                <Palette size={14} />
-                Theme
+                <Plus size={18} />
+                <span>
+                  <strong>Add a domain</strong>
+                  <small>Save a site into your accounts</small>
+                </span>
               </button>
-            </div>
-            {tab === "theme" ? (
+            </section>
+
+            <section className="menu-group">
+              <h3 className="menu-label">Device</h3>
               <div className="theme-list">
                 {THEMES.map((theme) => (
                   <button
@@ -138,68 +166,23 @@ export function AppFrame({ children }: { children: ReactNode }) {
                   </button>
                 ))}
               </div>
-            ) : (
-              <>
-            <button
-              type="button"
-              className="drawer-item"
-              onClick={() => {
-                patch({ mineOnly: true });
-                setMenu(false);
-              }}
-            >
-              <UserRound size={18} />
-              <span>
-                <strong>My accounts</strong>
-                <small>{state.mine.length} site{state.mine.length === 1 ? "" : "s"} saved</small>
-              </span>
-            </button>
-            <button
-              type="button"
-              className="drawer-item"
-              onClick={() => {
-                setAdding(true);
-                setMenu(false);
-              }}
-            >
-              <Plus size={18} />
-              <span>
-                <strong>Add a domain</strong>
-                <small>Save a site into your accounts</small>
-              </span>
-            </button>
-            <Link to="/fetch" className="drawer-item" onClick={() => setMenu(false)}>
-              <Zap size={18} />
-              <span>
-                <strong>Bonus fetcher</strong>
-                <small>Balances, share, referral, rebate</small>
-              </span>
-            </Link>
-            <div className="drawer-item">
-              <Shield size={18} />
-              <span>
-                <strong>Saved login per site</strong>
-                <small>Phone and password, this browser only</small>
-              </span>
-            </div>
-            <button
-              type="button"
-              className="drawer-item"
-              onClick={() => {
-                if (window.confirm("Clear saved sites, domain intel, visits, and the password stored on this device?")) {
-                  clearAll();
-                  setMenu(false);
-                }
-              }}
-            >
-              <Trash2 size={18} />
-              <span>
-                <strong>Clear this device</strong>
-                <small>Removes local vault data</small>
-              </span>
-            </button>
-              </>
-            )}
+              <button
+                type="button"
+                className="drawer-item danger"
+                onClick={() => {
+                  if (window.confirm("Clear saved sites, domain intel, visits, and the password stored on this device?")) {
+                    clearAll();
+                    setMenu(false);
+                  }
+                }}
+              >
+                <Trash2 size={18} />
+                <span>
+                  <strong>Clear this device</strong>
+                  <small>Removes local vault data</small>
+                </span>
+              </button>
+            </section>
           </aside>
         </div>
       ) : null}
