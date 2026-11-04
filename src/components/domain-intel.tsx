@@ -4,6 +4,7 @@ import { ChevronLeft, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useVault } from "@/components/vault";
 import { checkSiteStatus, fetchAllStatusesFn } from "@/lib/casino.functions";
+import { BUILT_IN_DOMAINS } from "@/lib/built-in-domains";
 import { isPublicDomain, normalizeDomain } from "@/lib/domain";
 import { domainsFromText, INTEL_KEY } from "@/lib/intel-domains";
 import { visibleSites } from "@/lib/working-sites";
@@ -50,6 +51,7 @@ export function DomainIntel() {
   const statusFn = useServerFn(checkSiteStatus);
   const allStatusesFn = useServerFn(fetchAllStatusesFn);
   const [ready, setReady] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(80);
   const [checks, setChecks] = useState<Record<string, Check>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [entry, setEntry] = useState("");
@@ -79,7 +81,7 @@ export function DomainIntel() {
     const saved = readSaved();
     setChecks(saved.checks);
     if (saved.domains.length) {
-      addManaged(saved.domains);
+      addManaged(saved.domains.filter((domain) => !BUILT_IN_DOMAINS.has(domain)));
       try {
         localStorage.setItem(KEY, JSON.stringify({ checks: saved.checks }));
       } catch {
@@ -91,12 +93,19 @@ export function DomainIntel() {
 
   useEffect(() => {
     if (!ready) return;
-    try {
-      localStorage.setItem(KEY, JSON.stringify({ checks }));
-    } catch {
-      /* ignore quota */
-    }
+    const id = window.setTimeout(() => {
+      try {
+        localStorage.setItem(KEY, JSON.stringify({ checks }));
+      } catch {
+        /* ignore quota */
+      }
+    }, 400);
+    return () => window.clearTimeout(id);
   }, [ready, checks]);
+
+  useEffect(() => {
+    setVisibleCount(80);
+  }, [filter]);
 
   const allSelected = shown.length > 0 && shown.every((domain) => selected.has(domain));
   const someSelected = shown.some((domain) => selected.has(domain)) && !allSelected;
@@ -364,7 +373,7 @@ export function DomainIntel() {
             <span>{filter.trim() ? `Select ${shown.length} shown` : "Select all"}</span>
           </label>
           <div className="intel-list">
-            {shown.map((domain) => {
+            {shown.slice(0, visibleCount).map((domain) => {
               const check = checks[domain];
               const status = check?.status ?? "unknown";
               return (
@@ -380,6 +389,11 @@ export function DomainIntel() {
               );
             })}
           </div>
+          {visibleCount < shown.length ? (
+            <button type="button" className="btn" onClick={() => setVisibleCount((value) => value + 80)}>
+              Show {Math.min(80, shown.length - visibleCount)} more
+            </button>
+          ) : null}
         </div>
       ) : (
         <div className="panel">

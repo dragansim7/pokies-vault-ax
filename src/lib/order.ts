@@ -1,6 +1,5 @@
 import type { AccountOk, AccountRow, BonusView } from "@/lib/parse-account";
 import type { BonusMode, SortMode } from "@/components/vault";
-import { CATALOG } from "@/data/sites";
 import type { SiteGroup } from "@/data/sites";
 
 export const SORT_IDS = [
@@ -21,13 +20,6 @@ export const SORT_IDS = [
 
 export function isSortMode(value: unknown): value is SortMode {
   return typeof value === "string" && (SORT_IDS as readonly string[]).includes(value);
-}
-
-const CATALOG_INDEX = new Map(CATALOG.map((site, index) => [site.domain, index]));
-const CATALOG_META = new Map(CATALOG.map((site) => [site.domain, site]));
-
-export function catalogMeta(domain: string): { domain: string; group: SiteGroup; addedAt: string | null } {
-  return CATALOG_META.get(domain) ?? { domain, group: "latest", addedAt: "" };
 }
 
 export function chosenBonus(row: AccountOk, mode: BonusMode): BonusView | null {
@@ -97,7 +89,5 @@ export function compareSites(
     if (sort === "shareMax") return desc(bonusA?.maxWithdrawal ?? null, bonusB?.maxWithdrawal ?? null) || tie();
     return asc(turnoverOf(bonusA), turnoverOf(bonusB)) || tie();
   }
-  const indexA = CATALOG_INDEX.get(a.domain) ?? Number.POSITIVE_INFINITY;
-  const indexB = CATALOG_INDEX.get(b.domain) ?? Number.POSITIVE_INFINITY;
-  return indexA - indexB || tie();
+  return tie();
 }

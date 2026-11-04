@@ -1,5 +1,6 @@
 import { isPublicDomain, normalizeDomain } from "@/lib/domain";
 import type { CasinoTarget } from "@/lib/casino-target";
+import { iconFromHtml } from "@/lib/icon-url";
 import { parsePublicPromotions, type CatalogueHit } from "@/lib/public-bonus";
 import { accountError, parseSyncUser, type AccountRow } from "@/lib/parse-account";
 
@@ -60,6 +61,42 @@ function classifyFailure(domain: string, message: string, fallback: string): Acc
     return accountError(domain, "timeout", "Timed out");
   }
   return accountError(domain, "other", fallback);
+}
+
+const iconCache = new Map<string, { url: string; at: number }>();
+
+export async function lookupSiteIcon(rawDomain: string): Promise<string> {
+  const domain = normalizeDomain(rawDomain);
+  if (!isPublicDomain(domain)) return "";
+  const cached = iconCache.get(domain);
+  if (cached && Date.now() - cached.at < 86_400_000) return cached.url;
+  const url = await readSiteIcon(domain);
+  iconCache.set(domain, { url, at: Date.now() });
+  return url;
+}
+
+async function readSiteIcon(domain: string): Promise<string> {
+  try {
+    const response = await fetch(`https://${domain}/`, {
+      redirect: "follow",
+      signal: AbortSignal.timeout(8_000),
+      headers: { accept: "text/html", "user-agent": UA },
+    });
+    if (!response.ok || !response.body) return "";
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let html = "";
+    while (html.length < 120_000) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      html += decoder.decode(value, { stream: true });
+      if (/<\/head>/i.test(html)) break;
+    }
+    await reader.cancel().catch(() => undefined);
+    return iconFromHtml(html, response.url || `https://${domain}/`);
+  } catch {
+    return "";
+  }
 }
 
 export async function inspectCasino(rawDomain: string): Promise<CasinoTarget> {

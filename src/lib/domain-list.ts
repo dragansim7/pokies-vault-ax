@@ -1,14 +1,21 @@
-import { CATALOG, type SiteGroup } from "@/data/sites";
+import type { SiteGroup } from "@/data/sites";
+import { BUILT_IN_DOMAINS } from "@/lib/built-in-domains";
 import { isPublicDomain, normalizeDomain } from "@/lib/domain";
 import type { ListedSite } from "@/lib/working-sites";
 
 export const LIST_KEY = "pokies_vault_domains_v1";
+export const CATALOG_STRIPPED_KEY = "pokies_vault_catalog_stripped_v1";
 
 const GROUPS = new Set<SiteGroup>(["new", "best", "unverified", "share", "latest", "custom"]);
-const CATALOG_MAP = new Map(CATALOG.map((site) => [site.domain, site]));
 
 export function siteRecord(domain: string, addedAt: string | null = null): ListedSite {
-  return CATALOG_MAP.get(domain) ?? { domain, group: "custom", addedAt };
+  return { domain, group: "custom", addedAt };
+}
+
+export function withoutBuiltIn(sites: ListedSite[], keep: Set<string>): ListedSite[] {
+  return sites.filter(
+    (site) => keep.has(site.domain) || site.group === "custom" || !BUILT_IN_DOMAINS.has(site.domain),
+  );
 }
 
 export function loadOwnedList(): ListedSite[] | null {

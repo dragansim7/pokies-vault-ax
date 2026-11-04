@@ -1,5 +1,8 @@
 import { readFile, writeFile } from "node:fs/promises";
 
+console.error("The built-in domain list is not used. Add domains in Domain Intel.");
+process.exit(0);
+
 const CATALOG_PATH = new URL("../src/data/sites.ts", import.meta.url);
 const HOMEPAGE_URL = "https://bestpokieslist.online/api/homepage-domains.php?build=v6";
 const STATUS_URL = "https://intel.bestpokieslist.online/public/statuses";

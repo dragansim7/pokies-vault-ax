@@ -6,11 +6,11 @@ import { visibleSites } from "@/lib/working-sites";
 import { useVault, type AttentionMark, type FallbackCred } from "@/components/vault";
 import { SiteIcon } from "@/components/site-icon";
 import { AccountCard } from "@/components/account-card";
-import { fetchCasinoBatchFn, resolveCasinoTargetsFn } from "@/lib/casino.functions";
+import { fetchCasinoBatchFn } from "@/lib/casino.functions";
 import { fetchAccountsOnDevice, isInstalledPhone } from "@/lib/fetch-on-device";
 import { isPublicDomain, normalizeDomain } from "@/lib/domain";
 import { money, formatAdded } from "@/lib/format";
-import { catalogMeta, compareSites } from "@/lib/order";
+import { compareSites } from "@/lib/order";
 import type { AccountCode, AccountErr, AccountOk, AccountRow } from "@/lib/parse-account";
 
 const PAGE = 12;
@@ -212,7 +212,7 @@ function deltaClass(note: ChangeNote): string {
   return "delta";
 }
 
-function PageList({ rows }: { rows: AccountOk[] }) {
+function PageList({ rows, addedAt }: { rows: AccountOk[]; addedAt: (domain: string) => string | null }) {
   const [page, setPage] = useState(0);
   const pages = Math.max(1, Math.ceil(rows.length / PAGE));
   const safe = Math.min(page, pages - 1);
@@ -243,7 +243,7 @@ function PageList({ rows }: { rows: AccountOk[] }) {
             key={row.domain}
             domain={row.domain}
             rank={safe * PAGE + index + 1}
-            addedAt={catalogMeta(row.domain).addedAt}
+            addedAt={addedAt(row.domain)}
             account={row}
           />
         ))}
@@ -290,6 +290,7 @@ function NeedsAttention({
   onToggle: (domain: string, code: string) => void;
 }) {
   const [showChecked, setShowChecked] = useState(false);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const stamp = savedAt ? formatAdded(new Date(savedAt).toISOString()) : "";
   const counts = CODE_ORDER.map((code) => ({
     code,
@@ -330,7 +331,7 @@ function NeedsAttention({
             {CODE_LABEL[group.code]} · {group.rows.length}
           </h3>
           <div className="attention-table">
-            {group.rows.map((row) => {
+            {(expanded[group.code] ? group.rows : group.rows.slice(0, 30)).map((row) => {
               const checked = isMarked(marks, row.domain, row.code);
               return (
                 <div className="attention-row" key={`${row.domain}-${row.code}`}>
@@ -352,6 +353,11 @@ function NeedsAttention({
                 </div>
               );
             })}
+            {group.rows.length > 30 && !expanded[group.code] ? (
+              <button type="button" className="btn" onClick={() => setExpanded((current) => ({ ...current, [group.code]: true }))}>
+                Show all {group.rows.length}
+              </button>
+            ) : null}
           </div>
         </div>
       ))}
@@ -362,7 +368,6 @@ function NeedsAttention({
 export function Fetcher() {
   const { state, patch, rememberAccount, rememberLogins, saveFetch } = useVault();
   const fetchBatch = useServerFn(fetchCasinoBatchFn);
-  const resolveTargets = useServerFn(resolveCasinoTargetsFn);
   const [onDevice, setOnDevice] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [advanced, setAdvanced] = useState(false);
@@ -423,8 +428,12 @@ export function Fetcher() {
   const empty = rows.filter((row): row is AccountOk => row.ok && !row.hasData);
   const errors = rows.filter((row) => !row.ok);
   const unsupportedDomains = errors.filter((row) => row.code === "unsupported").map((row) => row.domain);
+  const siteMeta = useMemo(() => {
+    const map = new Map(sites.map((site) => [site.domain, site]));
+    return (domain: string) => map.get(domain) ?? { domain, group: "custom" as const, addedAt: null };
+  }, [sites]);
   const orderOf = (a: AccountOk, b: AccountOk) =>
-    compareSites(catalogMeta(a.domain), catalogMeta(b.domain), a, b, state.sort, state.bonusMode);
+    compareSites(siteMeta(a.domain), siteMeta(b.domain), a, b, state.sort, state.bonusMode);
   const ranked = [...valid].sort(orderOf);
   const quiet = [...empty].sort(orderOf);
   const walletTotal = cents(ranked.reduce((sum, row) => sum + totalsOf(row).wallets, 0));
@@ -539,8 +548,6 @@ export function Fetcher() {
                   phone: cred.phone,
                   password: cred.password,
                   signal: controller.signal,
-                  resolve: (domains) =>
-                    resolveTargets({ data: { domains }, signal: controller.signal }),
                 })
               : await fetchBatch({
                   data: { domains: pending, phone: cred.phone, password: cred.password },
@@ -860,11 +867,11 @@ export function Fetcher() {
         {state.lastFetch && !running ? (
           <p className="hint waiting-split">Saved {formatAdded(new Date(state.lastFetch.at).toISOString())}</p>
         ) : null}
-        {ranked.length ? <PageList rows={ranked} /> : <p className="hint">Nothing with a balance or bonus yet.</p>}
+        {ranked.length ? <PageList rows={ranked} addedAt={(domain) => siteMeta(domain).addedAt} /> : <p className="hint">Nothing with a balance or bonus yet.</p>}
       </div>
       <div>
         <h2 className="section-label">Signed in, nothing waiting · {empty.length}</h2>
-        {quiet.length ? <PageList rows={quiet} /> : <p className="hint">None.</p>}
+        {quiet.length ? <PageList rows={quiet} addedAt={(domain) => siteMeta(domain).addedAt} /> : <p className="hint">None.</p>}
       </div>
       <div>
         <h2 className="section-label">Not your account or unreachable · {errors.length}</h2>

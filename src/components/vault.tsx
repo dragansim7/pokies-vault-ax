@@ -9,7 +9,7 @@ import {
 } from "react";
 import type { AccountRow } from "@/lib/parse-account";
 import { isPublicDomain, normalizeDomain } from "@/lib/domain";
-import { clearOwnedList, loadOwnedList, saveOwnedList, siteRecord } from "@/lib/domain-list";
+import { CATALOG_STRIPPED_KEY, clearOwnedList, loadOwnedList, saveOwnedList, siteRecord, withoutBuiltIn } from "@/lib/domain-list";
 import { INTEL_KEY } from "@/lib/intel-domains";
 import { workingSites, type ListedSite } from "@/lib/working-sites";
 import { isThemeId, themeById, type ThemeId } from "@/lib/themes";
@@ -191,15 +191,38 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const saved = load();
+    const keep = new Set(
+      saved.custom
+        .map((item) => normalizeDomain(item.domain))
+        .filter(isPublicDomain),
+    );
     const owned = loadOwnedList();
-    if (owned) {
-      setState({ ...saved, listOwned: true, sites: owned });
-    } else if (saved.removed.length || saved.custom.length) {
-      const sites = workingSites(saved.custom, saved.removed);
-      setState(saveOwnedList(sites) ? { ...saved, listOwned: true, sites } : saved);
-    } else {
-      setState(saved);
+    const base = owned ?? workingSites(saved.custom, saved.removed);
+    const stripped = localStorage.getItem(CATALOG_STRIPPED_KEY) === "1";
+    const sites = stripped ? base : withoutBuiltIn(base, keep);
+    const dropped = new Set(base.map((site) => site.domain).filter((domain) => !sites.some((site) => site.domain === domain)));
+    const mine = stripped ? saved.mine : saved.mine.filter((domain) => !dropped.has(domain));
+    const visited = stripped ? saved.visited : saved.visited.filter((domain) => !dropped.has(domain));
+    const lastFetch =
+      stripped || !saved.lastFetch
+        ? saved.lastFetch
+        : {
+            ...saved.lastFetch,
+            rows: saved.lastFetch.rows.filter((row) => !dropped.has(row.domain)),
+          };
+    const attentionChecked = stripped
+      ? saved.attentionChecked
+      : saved.attentionChecked.filter((item) => !dropped.has(item.domain));
+    const next = { ...saved, listOwned: true, sites, mine, visited, lastFetch, attentionChecked };
+    if (saveOwnedList(sites)) {
+      try {
+        localStorage.setItem(CATALOG_STRIPPED_KEY, "1");
+        writeVault(next);
+      } catch {
+        /* the domain list is already saved */
+      }
     }
+    setState(next);
     setReady(true);
   }, []);
 

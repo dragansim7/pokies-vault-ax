@@ -147,15 +147,65 @@ async function fetchOne(
   }
 }
 
+async function probeSite(
+  domain: string,
+  signal?: AbortSignal,
+): Promise<{ ok: true } | { ok: false; code: AccountCode; message: string }> {
+  let response: Response;
+  try {
+    response = await fetch(`https://${domain}/api/v1/index.php`, {
+      method: "POST",
+      signal,
+      headers: {
+        "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+        accept: "application/json,text/plain,*/*",
+      },
+      body: new URLSearchParams({
+        module: "/merchants/getPublicInfo",
+        merchantId: "",
+        accessId: "",
+        accessToken: "",
+        walletIsAdmin: "",
+      }),
+    });
+  } catch (error) {
+    if (signal?.aborted || (error instanceof DOMException && error.name === "AbortError")) throw error;
+    const message = error instanceof Error ? error.message.toLowerCase() : "";
+    if (message.includes("abort") || message.includes("timeout")) {
+      return { ok: false, code: "timeout", message: "Timed out" };
+    }
+    return { ok: false, code: "unreachable", message: "Could not reach site" };
+  }
+  const text = await response.text();
+  const trimmed = text.trim();
+  if (
+    response.status === 401 ||
+    response.status === 403 ||
+    response.status === 429 ||
+    /just a moment|cf-browser-verification|challenge-platform|attention required/i.test(trimmed)
+  ) {
+    return { ok: false, code: "blocked", message: "Page blocked" };
+  }
+  let body: ApiBody | null = null;
+  try {
+    const parsed = JSON.parse(trimmed) as ApiBody;
+    if (parsed && (parsed.status === "SUCCESS" || parsed.status === "ERROR")) body = parsed;
+  } catch {
+    body = null;
+  }
+  if (!body) return { ok: false, code: "unsupported", message: "Different login system" };
+  if (body.status === "SUCCESS") return { ok: true };
+  const message = messageOf(body.data).toLowerCase();
+  if (message.includes("captcha")) return { ok: false, code: "captcha", message: "Site asked for a captcha" };
+  return { ok: true };
+}
 export async function fetchAccountsOnDevice(input: {
   domains: string[];
   phone: string;
   password: string;
   signal?: AbortSignal;
-  resolve: (domains: string[]) => Promise<CasinoTarget[]>;
 }): Promise<AccountRow[]> {
   if (input.signal?.aborted) throw new DOMException("Aborted", "AbortError");
-  const targets = await input.resolve(input.domains);
   const out: AccountRow[] = new Array(input.domains.length);
   let cursor = 0;
   await Promise.all(
@@ -165,14 +215,17 @@ export async function fetchAccountsOnDevice(input: {
         const index = cursor++;
         if (index >= input.domains.length) return;
         const domain = normalizeDomain(input.domains[index] ?? "");
-        const target = targets[index];
-        if (!target || !target.ok) {
-          const code: AccountCode = target && !target.ok ? target.code : "other";
-          const message = target && !target.ok ? target.message : "Check failed";
-          out[index] = accountError(target?.domain || domain, code, message);
+        const probed = await probeSite(domain, input.signal);
+        if (!probed.ok) {
+          out[index] = accountError(domain, probed.code, probed.message);
           continue;
         }
-        out[index] = await fetchOne(target, input.phone, input.password, input.signal);
+        out[index] = await fetchOne(
+          { domain, ok: true, host: domain, merchantId: "" },
+          input.phone,
+          input.password,
+          input.signal,
+        );
       }
     }),
   );

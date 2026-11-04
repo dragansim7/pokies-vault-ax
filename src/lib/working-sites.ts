@@ -1,4 +1,5 @@
-import { CATALOG, type SiteGroup } from "@/data/sites";
+import { isPublicDomain, normalizeDomain } from "@/lib/domain";
+import type { SiteGroup } from "@/data/sites";
 
 export type ListedSite = {
   domain: string;
@@ -13,15 +14,11 @@ export function workingSites(
   const gone = new Set(removed);
   const sites: ListedSite[] = [];
   const seen = new Set<string>();
-  for (const site of CATALOG) {
-    if (gone.has(site.domain)) continue;
-    sites.push(site);
-    seen.add(site.domain);
-  }
   for (const site of custom) {
-    if (!site?.domain || gone.has(site.domain) || seen.has(site.domain)) continue;
-    sites.push({ domain: site.domain, group: "custom", addedAt: site.addedAt });
-    seen.add(site.domain);
+    const domain = normalizeDomain(site?.domain ?? "");
+    if (!isPublicDomain(domain) || gone.has(domain) || seen.has(domain)) continue;
+    sites.push({ domain, group: "custom", addedAt: site.addedAt ?? null });
+    seen.add(domain);
   }
   return sites;
 }

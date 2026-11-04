@@ -63,6 +63,8 @@ function bonusSortName(mode: BonusMode): string {
   return "Share";
 }
 
+const WINDOW = 48;
+
 export function Directory() {
   const { state, patch, markVisited, toggleMine } = useVault();
   const statusFn = useServerFn(checkSiteStatus);
@@ -75,6 +77,11 @@ export function Directory() {
   const [searchReady, setSearchReady] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);
   const [statuses, setStatuses] = useState<Record<string, StatusName>>(() => readStatusCache() ?? {});
+  const [extra, setExtra] = useState(0);
+
+  useEffect(() => {
+    setExtra(0);
+  }, [query, state.sort, state.mineOnly, state.notVisited, state.view]);
 
   useEffect(() => {
     setSearchReady(true);
@@ -270,41 +277,72 @@ export function Directory() {
         </div>
       </section>
 
-      {filtered.length === 0 ? <div className="empty">No matching sites.</div> : null}
+      {filtered.length === 0 ? (
+        <div className="empty">
+          {sites.length ? "No matching sites." : "No domains yet. Add them in Domain Intel."}
+        </div>
+      ) : null}
 
       {grouped && state.view === "default" ? (
         <>
+          {(["new", "best", "unverified"] as const).some((group) => filtered.some((site) => site.group === group)) ? (
           <div className="feature-frame">
             <div className="top-cols">
-              {(["new", "best", "unverified"] as const).map((group) => (
+              {(["new", "best", "unverified"] as const).map((group) => {
+                const items = filtered.filter((site) => site.group === group);
+                if (!items.length) return null;
+                return (
                 <div key={group}>
                   <h2>{GROUP_LABEL[group]}</h2>
                   <div className="top-col">
-                    {filtered
-                      .filter((site) => site.group === group)
-                      .map((site, index) => renderCard(site, index))}
+                    {items.map((site, index) => renderCard(site, index))}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
+          ) : null}
           {(["share", "custom", "latest"] as const).map((group) => {
             const items = filtered.filter((site) => site.group === group);
             if (!items.length) return null;
+            const visible = group === "latest" ? items.slice(0, WINDOW + extra) : items;
             return (
               <section key={group}>
                 <h2 className="section-label">
                   {GROUP_LABEL[group]} · {items.length}
                 </h2>
-                <div className="cards">{items.map((site, index) => renderCard(site, index))}</div>
+                <div className="cards">{visible.map((site, index) => renderCard(site, index))}</div>
+                {visible.length < items.length ? (
+                  <div className="pager">
+                    <button type="button" className="btn" onClick={() => setExtra((value) => value + WINDOW)}>
+                      Show {Math.min(WINDOW, items.length - visible.length)} more
+                    </button>
+                    <span>
+                      {visible.length} of {items.length}
+                    </span>
+                  </div>
+                ) : null}
               </section>
             );
           })}
         </>
       ) : (
-        <div className={state.view === "one" ? "cards view-one" : state.view === "two" ? "cards view-two" : "cards"}>
-          {filtered.map((site, index) => renderCard(site, index))}
-        </div>
+        <>
+          <div className={state.view === "one" ? "cards view-one" : state.view === "two" ? "cards view-two" : "cards"}>
+            {filtered.slice(0, WINDOW + extra).map((site, index) => renderCard(site, index))}
+          </div>
+          {WINDOW + extra < filtered.length ? (
+            <div className="pager">
+              <button type="button" className="btn" onClick={() => setExtra((value) => value + WINDOW)}>
+                Show {Math.min(WINDOW, filtered.length - (WINDOW + extra))} more
+              </button>
+              <span>
+                {Math.min(WINDOW + extra, filtered.length)} of {filtered.length}
+              </span>
+            </div>
+          ) : null}
+        </>
       )}
 
       {sortOpen ? (

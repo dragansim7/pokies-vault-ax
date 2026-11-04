@@ -9,6 +9,13 @@ export type StatusResult = {
   ms: number;
 };
 
+export const lookupSiteIconFn = createServerFn({ method: "POST" })
+  .validator((data: { domain: string }) => data)
+  .handler(async ({ data }): Promise<string> => {
+    const { lookupSiteIcon } = await import("@/lib/casino.impl.server");
+    return lookupSiteIcon(data.domain);
+  });
+
 export const loadPublicCatalogueFn = createServerFn({ method: "POST" })
   .validator((data: { domains: string[] }) => data)
   .handler(async ({ data }): Promise<CatalogueHit[]> => {
