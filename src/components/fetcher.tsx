@@ -7,7 +7,7 @@ import { useVault, type AttentionMark, type FallbackCred } from "@/components/va
 import { SiteIcon } from "@/components/site-icon";
 import { AccountCard } from "@/components/account-card";
 import { fetchCasinoBatchFn } from "@/lib/casino.functions";
-import { fetchAccountsOnDevice, isInstalledPhone } from "@/lib/fetch-on-device";
+import { fetchAccountOnDevice, isInstalledPhone } from "@/lib/fetch-on-device";
 import { isPublicDomain, normalizeDomain } from "@/lib/domain";
 import { money, formatAdded } from "@/lib/format";
 import { compareSites } from "@/lib/order";
@@ -16,6 +16,10 @@ import type { AccountCode, AccountErr, AccountOk, AccountRow } from "@/lib/parse
 const PAGE = 12;
 const BATCH = 10;
 const RUN_KEY = "vault-run";
+const KNOWN_KEY = "pokies_vault_known_systems_v1";
+const MIN_WORKERS = 6;
+const START_WORKERS = 8;
+const MAX_WORKERS = 20;
 
 type RunCheckpoint = { at: number; done: string[]; rows: AccountRow[] };
 
@@ -30,6 +34,7 @@ type LiveStats = {
   attempts: number;
   retries: number;
   peakQueue: number;
+  workers: number;
 };
 
 const IDLE_LIVE: LiveStats = {
@@ -43,6 +48,7 @@ const IDLE_LIVE: LiveStats = {
   attempts: 0,
   retries: 0,
   peakQueue: 0,
+  workers: 0,
 };
 
 function formatSpan(ms: number): string {
@@ -70,12 +76,65 @@ function readRun(): RunCheckpoint | null {
   }
 }
 
-function writeRun(checkpoint: RunCheckpoint) {
+function loadKnown(logins: Record<string, FallbackCred>, rows: AccountRow[]): Set<string> {
+  const known = new Set<string>();
   try {
-    localStorage.setItem(RUN_KEY, JSON.stringify(checkpoint));
+    const raw = JSON.parse(localStorage.getItem(KNOWN_KEY) || "[]") as unknown;
+    if (Array.isArray(raw)) {
+      for (const item of raw) {
+        const domain = normalizeDomain(String(item));
+        if (isPublicDomain(domain)) known.add(domain);
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  for (const domain of Object.keys(logins)) {
+    const clean = normalizeDomain(domain);
+    if (isPublicDomain(clean)) known.add(clean);
+  }
+  for (const row of rows) if (row.ok) known.add(row.domain);
+  return known;
+}
+
+function saveKnown(known: Set<string>) {
+  try {
+    localStorage.setItem(KNOWN_KEY, JSON.stringify([...known]));
   } catch {
     /* ignore quota */
   }
+}
+
+function credsFor(domain: string, form: FallbackCred[], saved: Record<string, FallbackCred>): FallbackCred[] {
+  const ordered: FallbackCred[] = [];
+  const seen = new Set<string>();
+  const push = (login: FallbackCred | null) => {
+    if (!login || seen.has(loginKey(login))) return;
+    seen.add(loginKey(login));
+    ordered.push(login);
+  };
+  push(usableLogin(saved[domain]));
+  for (const login of form) push(login);
+  return ordered;
+}
+
+function writeRun(checkpoint: RunCheckpoint) {
+  const slim = { at: checkpoint.at, done: checkpoint.done, rows: [] as AccountRow[] };
+  try {
+    localStorage.setItem(RUN_KEY, JSON.stringify(checkpoint));
+  } catch {
+    try {
+      localStorage.setItem(RUN_KEY, JSON.stringify(slim));
+    } catch {
+      /* ignore quota */
+    }
+  }
+}
+
+function overlayRows(base: AccountRow[], updates: AccountRow[]): AccountRow[] {
+  const map = new Map(base.map((row) => [row.domain, row]));
+  for (const row of updates) map.set(row.domain, row);
+  return [...map.values()];
 }
 
 function chunkDomains(domains: string[]): string[][] {
@@ -476,7 +535,8 @@ export function Fetcher() {
       fetchMs: 0,
       attempts: 0,
       retries: 0,
-      peakQueue: Math.max(0, total - done.length),
+      peakQueue: 0,
+      workers: fromPhone ? START_WORKERS : 0,
     };
     liveRef.current = started;
     setLive(started);
@@ -499,6 +559,33 @@ export function Fetcher() {
               : `Checking ${unique.length} sites…`,
     );
 
+    const priorRows = overlayRows(state.lastFetch?.rows ?? [], mergeBase ?? resumeFrom?.rows ?? []);
+    let paintTimer: number | null = null;
+    let stored = true;
+    const store = () => {
+      const ok = saveFetch(overlayRows(priorRows, collected));
+      if (!ok) stored = false;
+      return ok;
+    };
+    const paint = () => {
+      const snapshot = [...collected].sort((a, b) => a.domain.localeCompare(b.domain));
+      setRows(snapshot);
+      setProgress({ done: done.length, total });
+      const queue = Math.max(0, total - done.length);
+      liveRef.current = {
+        ...liveRef.current,
+        done: done.length,
+        total,
+        peakQueue: fromPhone ? liveRef.current.peakQueue : Math.max(liveRef.current.peakQueue, queue),
+      };
+      setLive(liveRef.current);
+      if (!merging) {
+        const checkpoint = { at: Date.now(), done: [...done], rows: snapshot };
+        writeRun(checkpoint);
+        setPendingRun(done.length < sites.length ? checkpoint : null);
+      }
+      if (collected.length) store();
+    };
     const publish = (batchRows: AccountRow[], loginNotes: { domain: string; login: FallbackCred | null }[]) => {
       rememberLogins(loginNotes);
       for (const row of batchRows) {
@@ -508,25 +595,150 @@ export function Fetcher() {
         else collected.push(row);
         if (!done.includes(row.domain)) done.push(row.domain);
       }
-      const snapshot = [...collected].sort((a, b) => a.domain.localeCompare(b.domain));
-      setRows(snapshot);
-      setProgress({ done: done.length, total });
-      const queue = Math.max(0, total - done.length);
-      liveRef.current = {
-        ...liveRef.current,
-        done: done.length,
-        total,
-        peakQueue: Math.max(liveRef.current.peakQueue, queue),
-      };
-      setLive(liveRef.current);
-      if (!merging) {
-        const checkpoint = { at: Date.now(), done: [...done], rows: snapshot };
-        writeRun(checkpoint);
-        setPendingRun(done.length < sites.length ? checkpoint : null);
+      if (fromPhone) {
+        liveRef.current = { ...liveRef.current, done: done.length, total };
+        setLive(liveRef.current);
+        setProgress({ done: done.length, total });
+        if (paintTimer == null) {
+          paintTimer = window.setTimeout(() => {
+            paintTimer = null;
+            paint();
+          }, 400);
+        }
+        return;
       }
+      paint();
     };
 
     let cursor = 0;
+    if (fromPhone) {
+      const known = loadKnown(state.logins, state.lastFetch?.rows ?? []);
+      const jobs = unique
+        .map((domain) => ({ domain, creds: credsFor(domain, creds, state.logins) }))
+        .filter((job) => job.creds.length);
+      let limit = START_WORKERS;
+      let active = 0;
+      let pressure = 0;
+      let clean = 0;
+      let spawn = () => {};
+      const noteOutcome = (kind: "ok" | "bad") => {
+        const before = limit;
+        if (kind === "bad") {
+          pressure += 2;
+          clean = 0;
+          if (pressure >= 4 && limit > MIN_WORKERS) {
+            limit = Math.max(MIN_WORKERS, limit - 2);
+            pressure = 0;
+          }
+        } else {
+          pressure = Math.max(0, pressure - 1);
+          clean += 1;
+          if (clean >= 12 && pressure === 0 && limit < MAX_WORKERS) {
+            limit = Math.min(MAX_WORKERS, limit + 2);
+            clean = 0;
+          }
+        }
+        if (limit > before) spawn();
+      };
+      let knownTimer: number | null = null;
+      const queueKnown = () => {
+        if (knownTimer != null) return;
+        knownTimer = window.setTimeout(() => {
+          knownTimer = null;
+          saveKnown(known);
+        }, 1000);
+      };
+      await new Promise<void>((resolve) => {
+        const finish = () => {
+          if (active === 0 && (controller.signal.aborted || cursor >= jobs.length)) resolve();
+        };
+        spawn = () => {
+          while (!controller.signal.aborted && active < limit && cursor < jobs.length) {
+            const job = jobs[cursor];
+            cursor += 1;
+            if (!job) break;
+            active += 1;
+            liveRef.current = {
+              ...liveRef.current,
+              workers: limit,
+              peakQueue: Math.max(liveRef.current.peakQueue, active),
+            };
+            setLive(liveRef.current);
+            void (async () => {
+              const startedTry = Date.now();
+              let attempts = 0;
+              let retries = 0;
+              let last: AccountRow = { domain: job.domain, ok: false, code: "invalid_login", message: "Not your account" };
+              for (const cred of job.creds) {
+                if (controller.signal.aborted) return;
+                attempts += 1;
+                let result: { row: AccountRow; confirmed: boolean };
+                try {
+                  result = await fetchAccountOnDevice({
+                    domain: job.domain,
+                    phone: cred.phone,
+                    password: cred.password,
+                    signal: controller.signal,
+                    knownSystem: known.has(job.domain),
+                  });
+                } catch (error) {
+                  if (controller.signal.aborted || (error instanceof DOMException && error.name === "AbortError")) return;
+                  result = { row: { domain: job.domain, ok: false, code: "other", message: "Check failed" }, confirmed: false };
+                }
+                if (result.confirmed) {
+                  known.add(job.domain);
+                  queueKnown();
+                }
+                const row = result.row;
+                if (row.ok) {
+                  noteOutcome("ok");
+                  liveRef.current = {
+                    ...liveRef.current,
+                    fetchMs: liveRef.current.fetchMs + (Date.now() - startedTry),
+                    attempts: liveRef.current.attempts + attempts,
+                    retries: liveRef.current.retries + retries,
+                    workers: limit,
+                  };
+                  publish([row], [{ domain: job.domain, login: cred }]);
+                  return;
+                }
+                if (row.code === "invalid_login") {
+                  retries += 1;
+                  last = row;
+                  continue;
+                }
+                if (row.code === "timeout" || row.code === "captcha") noteOutcome("bad");
+                liveRef.current = {
+                  ...liveRef.current,
+                  fetchMs: liveRef.current.fetchMs + (Date.now() - startedTry),
+                  attempts: liveRef.current.attempts + attempts,
+                  retries: liveRef.current.retries + retries,
+                  workers: limit,
+                };
+                publish([row], []);
+                return;
+              }
+              liveRef.current = {
+                ...liveRef.current,
+                fetchMs: liveRef.current.fetchMs + (Date.now() - startedTry),
+                attempts: liveRef.current.attempts + attempts,
+                retries: liveRef.current.retries + retries,
+                workers: limit,
+              };
+              publish([last], [{ domain: job.domain, login: null }]);
+            })().finally(() => {
+              active -= 1;
+              spawn();
+              finish();
+            });
+          }
+          finish();
+        };
+        spawn();
+      });
+      if (knownTimer != null) window.clearTimeout(knownTimer);
+      saveKnown(known);
+    } else {
     const worker = async () => {
       for (;;) {
         if (controller.signal.aborted) return;
@@ -542,14 +754,7 @@ export function Fetcher() {
           for (const cred of batch.creds) {
             if (controller.signal.aborted || !pending.length) break;
             const startedTry = Date.now();
-            const result = fromPhone
-              ? await fetchAccountsOnDevice({
-                  domains: pending,
-                  phone: cred.phone,
-                  password: cred.password,
-                  signal: controller.signal,
-                })
-              : await fetchBatch({
+            const result = await fetchBatch({
                   data: { domains: pending, phone: cred.phone, password: cred.password },
                   signal: controller.signal,
                 });
@@ -595,12 +800,17 @@ export function Fetcher() {
         );
       }
     };
-    await Promise.all(Array.from({ length: Math.min(fromPhone ? 2 : 4, batches.length) }, () => worker()));
+    await Promise.all(Array.from({ length: Math.min(4, batches.length) }, () => worker()));
+    }
+    if (paintTimer != null) {
+      window.clearTimeout(paintTimer);
+      paintTimer = null;
+    }
+    paint();
     const stopped = controller.signal.aborted;
     const finalRows = [...collected].sort((a, b) => a.domain.localeCompare(b.domain));
     setRows(finalRows);
-    saveFetch(finalRows);
-    if (!merging && !stopped && done.length >= sites.length) {
+    if (stored && !merging && !stopped && done.length >= sites.length) {
       try {
         localStorage.removeItem(RUN_KEY);
       } catch {
@@ -629,9 +839,11 @@ export function Fetcher() {
     };
     setLive(liveRef.current);
     setStatus(
-      stopped
-        ? "Stopped. Successful sign-ins stay in My accounts."
-        : `Done. ${signedIn} of ${finalRows.length} signed in. Only those are kept as your accounts.`,
+      !stored
+        ? "Finished, but this phone could not store the result. Leave the app open and try the fetch again."
+        : stopped
+          ? "Stopped. Successful sign-ins stay in My accounts."
+          : `Done. ${signedIn} of ${finalRows.length} signed in. Only those are kept as your accounts.`,
     );
     setRunning(false);
   }
@@ -789,17 +1001,39 @@ export function Fetcher() {
           Scan the full list to find my accounts
         </button>
         {pendingRun && !running ? (
-          <button
-            type="button"
-            className="btn"
-            onClick={() => {
-              const done = new Set(pendingRun.done);
-              const remaining = sites.map((site) => site.domain).filter((domain) => !done.has(domain));
-              void run(remaining, pendingRun);
-            }}
-          >
-            Resume scan ({pendingRun.done.length} of {sites.length})
-          </button>
+          <>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                const done = new Set(pendingRun.done);
+                const remaining = sites.map((site) => site.domain).filter((domain) => !done.has(domain));
+                void run(remaining, pendingRun);
+              }}
+            >
+              Resume scan ({pendingRun.done.length} of {sites.length})
+            </button>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                try {
+                  localStorage.removeItem(RUN_KEY);
+                } catch {
+                  /* ignore */
+                }
+                setPendingRun(null);
+                setRows(state.lastFetch?.rows ?? []);
+                setDiffs([]);
+                setComparedAt(null);
+                setProgress({ done: 0, total: 0 });
+                setLive(IDLE_LIVE);
+                setStatus("Cleared the stopped run. Saved accounts are unchanged.");
+              }}
+            >
+              Clear current run
+            </button>
+          </>
         ) : null}
         <div className="panel live-fetch">
           <h2 className="section-label">Live fetch</h2>
@@ -814,7 +1048,7 @@ export function Fetcher() {
             {live.phase === "idle" ? 0 : rows.filter((row) => row.ok).length} signed in · {live.phase === "idle" ? 0 : errors.length} rejected · {live.phase === "idle" ? 0 : ranked.length} with a balance · {live.phase === "idle" ? 0 : quiet.length} nothing waiting
           </p>
           <p className="live-meta">
-            Queue {Math.max(0, live.total - (live.phase === "idle" ? 0 : live.done))} · peak {live.peakQueue}
+            Queue {Math.max(0, live.total - (live.phase === "idle" ? 0 : live.done))} · workers {live.workers} · peak {live.peakQueue}
           </p>
           <p className="live-meta">
             Wall {live.startedAt ? formatSpan((live.finishedAt ?? now) - live.startedAt) : "0s"} · sign-in {formatSpan(live.fetchMs)}

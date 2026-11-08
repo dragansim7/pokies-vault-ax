@@ -43,20 +43,36 @@ export function isInstalledPhone(): boolean {
   return standalone && phone;
 }
 
+const CALL_MS = 18_000;
+
+function callSignal(signal?: AbortSignal): { signal: AbortSignal; timedOut: () => boolean } {
+  const timeout = AbortSignal.timeout(CALL_MS);
+  const combined = signal ? AbortSignal.any([signal, timeout]) : timeout;
+  return { signal: combined, timedOut: () => timeout.aborted && !signal?.aborted };
+}
+
 async function postApi(
   host: string,
   fields: Record<string, string>,
   signal?: AbortSignal,
 ): Promise<ApiBody> {
-  const response = await fetch(`https://${host}/api/v1/index.php`, {
-    method: "POST",
-    signal,
-    headers: {
-      "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
-      accept: "application/json,text/plain,*/*",
-    },
-    body: new URLSearchParams(fields),
-  });
+  const timed = callSignal(signal);
+  let response: Response;
+  try {
+    response = await fetch(`https://${host}/api/v1/index.php`, {
+      method: "POST",
+      signal: timed.signal,
+      headers: {
+        "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+        accept: "application/json,text/plain,*/*",
+      },
+      body: new URLSearchParams(fields),
+    });
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    if (timed.timedOut()) throw new Error("timeout");
+    throw error;
+  }
   const text = await response.text();
   try {
     return JSON.parse(text) as ApiBody;
@@ -70,6 +86,7 @@ async function fetchOne(
   phone: string,
   password: string,
   signal?: AbortSignal,
+  knownPromotions?: unknown,
 ): Promise<AccountRow> {
   const domain = target.domain;
   if (!/^[0-9+]{6,20}$/.test(phone)) {
@@ -117,24 +134,26 @@ async function fetchOne(
       return classifyFailure(domain, messageOf(synced.data), "Signed in, but balances did not load");
     }
     const syncedRow = synced.data && typeof synced.data === "object" ? (synced.data as { bonus?: unknown }) : null;
-    let promotions: unknown;
+    let promotions = knownPromotions;
     if (!syncedRow || !Array.isArray(syncedRow.bonus)) {
-      try {
-        const pub = await postApi(
-          target.host,
-          {
-            module: "/merchants/getPublicInfo",
-            merchantId: target.merchantId,
-            accessId: "",
-            accessToken: "",
-            walletIsAdmin: "",
-          },
-          signal,
-        );
-        const body = pub.data && typeof pub.data === "object" ? (pub.data as { promotions?: unknown }) : null;
-        promotions = body?.promotions;
-      } catch {
-        promotions = undefined;
+      if (promotions === undefined) {
+        try {
+          const pub = await postApi(
+            target.host,
+            {
+              module: "/merchants/getPublicInfo",
+              merchantId: target.merchantId,
+              accessId: "",
+              accessToken: "",
+              walletIsAdmin: "",
+            },
+            signal,
+          );
+          const body = pub.data && typeof pub.data === "object" ? (pub.data as { promotions?: unknown }) : null;
+          promotions = body?.promotions;
+        } catch {
+          promotions = undefined;
+        }
       }
     }
     return parseSyncUser(domain, synced.data, promotions);
@@ -150,12 +169,13 @@ async function fetchOne(
 async function probeSite(
   domain: string,
   signal?: AbortSignal,
-): Promise<{ ok: true } | { ok: false; code: AccountCode; message: string }> {
+): Promise<{ ok: true; promotions?: unknown } | { ok: false; code: AccountCode; message: string }> {
   let response: Response;
+  const timed = callSignal(signal);
   try {
     response = await fetch(`https://${domain}/api/v1/index.php`, {
       method: "POST",
-      signal,
+      signal: timed.signal,
       headers: {
         "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
         accept: "application/json,text/plain,*/*",
@@ -169,9 +189,9 @@ async function probeSite(
       }),
     });
   } catch (error) {
-    if (signal?.aborted || (error instanceof DOMException && error.name === "AbortError")) throw error;
+    if (signal?.aborted) throw error;
     const message = error instanceof Error ? error.message.toLowerCase() : "";
-    if (message.includes("abort") || message.includes("timeout")) {
+    if (timed.timedOut() || message.includes("timeout") || message.includes("abort")) {
       return { ok: false, code: "timeout", message: "Timed out" };
     }
     return { ok: false, code: "unreachable", message: "Could not reach site" };
@@ -194,11 +214,40 @@ async function probeSite(
     body = null;
   }
   if (!body) return { ok: false, code: "unsupported", message: "Different login system" };
-  if (body.status === "SUCCESS") return { ok: true };
+  if (body.status === "SUCCESS") {
+    const data = body.data && typeof body.data === "object" ? (body.data as { promotions?: unknown }) : null;
+    return { ok: true, promotions: data?.promotions };
+  }
   const message = messageOf(body.data).toLowerCase();
   if (message.includes("captcha")) return { ok: false, code: "captcha", message: "Site asked for a captcha" };
   return { ok: true };
 }
+export async function fetchAccountOnDevice(input: {
+  domain: string;
+  phone: string;
+  password: string;
+  signal?: AbortSignal;
+  knownSystem?: boolean;
+}): Promise<{ row: AccountRow; confirmed: boolean }> {
+  const domain = normalizeDomain(input.domain);
+  let promotions: unknown;
+  if (!input.knownSystem) {
+    const probed = await probeSite(domain, input.signal);
+    if (!probed.ok) return { row: accountError(domain, probed.code, probed.message), confirmed: false };
+    promotions = probed.promotions;
+  }
+  return {
+    row: await fetchOne(
+      { domain, ok: true, host: domain, merchantId: "" },
+      input.phone,
+      input.password,
+      input.signal,
+      promotions,
+    ),
+    confirmed: true,
+  };
+}
+
 export async function fetchAccountsOnDevice(input: {
   domains: string[];
   phone: string;

@@ -4,9 +4,11 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
+import { flushSync } from "react-dom";
 import type { AccountRow } from "@/lib/parse-account";
 import { isPublicDomain, normalizeDomain } from "@/lib/domain";
 import { CATALOG_STRIPPED_KEY, clearOwnedList, loadOwnedList, saveOwnedList, siteRecord, withoutBuiltIn } from "@/lib/domain-list";
@@ -179,7 +181,7 @@ type VaultApi = {
   removeManaged: (domains: string[]) => string | null;
   rememberAccount: (domain: string) => void;
   rememberLogins: (updates: { domain: string; login: FallbackCred | null }[]) => void;
-  saveFetch: (rows: AccountRow[]) => void;
+  saveFetch: (rows: AccountRow[]) => boolean;
   clearAll: () => void;
 };
 
@@ -432,19 +434,24 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     return error;
   }, []);
 
+  const saveOk = useRef(true);
   const saveFetch = useCallback((rows: AccountRow[]) => {
     const lastFetch: LastFetch = { at: Date.now(), rows };
-    setState((current) => {
-      const found = rows.filter((row) => row.ok).map((row) => row.domain);
-      const mine = Array.from(new Set([...current.mine, ...found]));
-      const next = { ...current, lastFetch, mine };
-      try {
-        writeVault(next);
-      } catch {
-        /* ignore */
-      }
-      return next;
+    flushSync(() => {
+      setState((current) => {
+        const found = rows.filter((row) => row.ok).map((row) => row.domain);
+        const mine = Array.from(new Set([...current.mine, ...found]));
+        const next = { ...current, lastFetch, mine };
+        try {
+          writeVault(next);
+          saveOk.current = true;
+        } catch {
+          saveOk.current = false;
+        }
+        return next;
+      });
     });
+    return saveOk.current;
   }, []);
 
   const clearAll = useCallback(() => {
