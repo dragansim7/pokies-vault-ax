@@ -19,10 +19,10 @@ const PAGE = 12;
 const BATCH = 10;
 const RUN_KEY = "vault-run";
 const KNOWN_KEY = "pokies_vault_known_systems_v1";
-const MIN_WORKERS = 1;
-const START_WORKERS = 2;
-const VAULT_WORKERS = 2;
-const GAP_MS = 1500;
+const MIN_WORKERS = 4;
+const START_WORKERS = 8;
+const MAX_WORKERS = 16;
+const RETRY_GAP_MS = 400;
 
 type RunCheckpoint = { at: number; done: string[]; rows: AccountRow[] };
 
@@ -589,7 +589,7 @@ export function Fetcher() {
       attempts: 0,
       retries: 0,
       peakQueue: 0,
-      workers: fromPhone ? START_WORKERS : Math.min(VAULT_WORKERS, batches.length),
+      workers: fromPhone ? START_WORKERS : Math.min(2, batches.length),
     };
     liveRef.current = started;
     setLive(started);
@@ -670,16 +670,24 @@ export function Fetcher() {
       let limit = START_WORKERS;
       let active = 0;
       let pressure = 0;
+      let streak = 0;
       let spawn = () => {};
       const noteOutcome = (kind: "ok" | "bad") => {
         if (kind === "bad") {
-          pressure += 2;
-          if (pressure >= 2 && limit > MIN_WORKERS) {
-            limit = MIN_WORKERS;
+          streak = 0;
+          pressure += 1;
+          if (pressure >= 3 && limit > MIN_WORKERS) {
+            limit = Math.max(MIN_WORKERS, limit - 2);
             pressure = 0;
           }
         } else {
           pressure = Math.max(0, pressure - 1);
+          streak += 1;
+          if (streak >= 8 && limit < MAX_WORKERS) {
+            limit += 2;
+            streak = 0;
+            spawn();
+          }
         }
       };
       let knownTimer: number | null = null;
@@ -748,7 +756,7 @@ export function Fetcher() {
                   retries += 1;
                   last = row;
                   if (controller.signal.aborted) return;
-                  await new Promise((resolve) => window.setTimeout(resolve, GAP_MS));
+                  await new Promise((resolve) => window.setTimeout(resolve, RETRY_GAP_MS));
                   continue;
                 }
                 if (row.code === "timeout" || row.code === "captcha") noteOutcome("bad");
@@ -770,10 +778,7 @@ export function Fetcher() {
                 workers: limit,
               };
               publish([last], [{ domain: job.domain, login: null }]);
-            })().finally(async () => {
-              if (!controller.signal.aborted) {
-                await new Promise((resolve) => window.setTimeout(resolve, GAP_MS));
-              }
+            })().finally(() => {
               active -= 1;
               spawn();
               finish();
@@ -786,7 +791,7 @@ export function Fetcher() {
       if (knownTimer != null) window.clearTimeout(knownTimer);
       saveKnown(known);
     } else {
-    const vaultLimit = Math.min(VAULT_WORKERS, batches.length);
+    const vaultLimit = Math.min(2, batches.length);
     let vaultActive = 0;
     const noteVault = (delta: number) => {
       vaultActive = Math.max(0, vaultActive + delta);
@@ -952,8 +957,9 @@ export function Fetcher() {
           Fetch bonus data
         </h1>
         <p className="hint">
-          Sign-in stays on this device, two sites at a time, with a short gap. The password is not sent through
-          the vault. A hit is remembered here and used first next time.
+          Sign-in stays on this device. Eight sites start at once and it rises to sixteen while sign-ins keep
+          working. Each site is a different server, so one casino is not logged into over and over. The
+          password is not sent through the vault. A hit is remembered here and used first next time.
         </p>
         {Object.keys(state.logins).length ? (
           <p className="hint">{Object.keys(state.logins).length} sites have a saved login.</p>
@@ -1282,8 +1288,7 @@ export function Fetcher() {
             <h3>Scan every listed site?</h3>
             <p className="hint">
               Sites that already signed in use that saved login. The rest try the phone and password above.
-              Logins are paced so the sites see a normal visit, not a burst. A full scan takes longer. You can
-              stop it at any time.
+              You can stop it at any time.
             </p>
             <div className="actions">
               <button type="button" className="btn" onClick={() => setConfirmScan(false)}>
