@@ -751,6 +751,98 @@ html[data-theme="royal"] {
   gap: 6px;
 }
 
+.ip-card {
+  display: grid;
+  gap: 8px;
+  padding: 14px 14px 12px;
+  border: 1px solid rgba(52, 211, 153, 0.45);
+  border-radius: 16px;
+  background: rgba(16, 185, 129, 0.06);
+}
+
+.ip-card-local {
+  border-color: #34d399;
+}
+
+.ip-card-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ip-card-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.ip-badge {
+  margin-left: auto;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: #22c55e;
+  color: #052e16;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.ip-card:not(.ip-card-local) .ip-badge {
+  background: #f59e0b;
+  color: #1c1405;
+}
+
+.ip-refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #67e8f9;
+  cursor: pointer;
+}
+
+.ip-card-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.ip-dot,
+.ip-check {
+  flex: 0 0 auto;
+  margin-top: 4px;
+}
+
+.ip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 99px;
+  background: #34d399;
+  box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.18);
+}
+
+.ip-check {
+  width: 14px;
+  height: 14px;
+  margin-top: 1px;
+  border-radius: 99px;
+  background: #22d3ee;
+  -webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='black' d='M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z'/></svg>") center / 12px 12px no-repeat;
+  mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='black' d='M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z'/></svg>") center / 12px 12px no-repeat;
+}
+
 .live-via,
 .live-count {
   margin: 0;
@@ -1404,12 +1496,32 @@ html[data-theme="royal"] {
 }
 
 .acct-chips.slots {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
+.acct-chips.slots .acct-chip span,
 .acct-chips.slots .acct-chip small {
   white-space: normal;
-  line-height: 1.2;
+  line-height: 1.15;
+}
+
+.filter-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgb(255 255 255 / 12%);
+  background: var(--color-panel-2);
+  color: var(--color-fg);
+  font-weight: 700;
+}
+
+.finder-box {
+  display: grid;
+  gap: 10px;
 }
 
 .finder-slots,
@@ -1815,3 +1927,83 @@ html[data-theme="amber"] .attention-row {
   border-radius: 6px;
   border: 1px solid rgb(232 176 92 / 18%);
 }
+
+.login-page {
+  display: grid;
+  min-height: 100dvh;
+  place-items: center;
+  padding: 28px 16px 48px;
+  background:
+    radial-gradient(ellipse at 50% -10%, color-mix(in oklab, var(--color-violet) 28%, transparent), transparent 55%),
+    var(--color-bg);
+}
+
+.login-card {
+  width: min(420px, 100%);
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 28px 22px 22px;
+  border-radius: 22px;
+  border: 1px solid color-mix(in oklab, var(--color-fg) 12%, transparent);
+  background: color-mix(in oklab, var(--color-panel) 92%, black);
+  box-shadow: 0 24px 60px rgb(0 0 0 / 35%);
+}
+
+.login-mark {
+  width: 72px;
+  height: 72px;
+  border-radius: 18px;
+  object-fit: cover;
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--color-cyan) 35%, transparent);
+}
+
+.login-kicker {
+  margin: 4px 0 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.login-title {
+  margin: 0;
+  font-size: 1.85rem;
+  line-height: 1;
+}
+
+.login-lead {
+  margin: 0 0 6px;
+  text-align: center;
+}
+
+.login-providers,
+.login-card form {
+  width: 100%;
+}
+
+.login-providers {
+  display: grid;
+  gap: 8px;
+}
+
+.login-provider {
+  width: 100%;
+}
+
+.login-or {
+  margin: 2px 0;
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-faint);
+}
+
+.login-switch {
+  width: 100%;
+}
+
+.account-chip {
+  padding: 8px 4px 2px;
+}
+

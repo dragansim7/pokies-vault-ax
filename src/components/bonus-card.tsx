@@ -4,12 +4,22 @@ import { SiteIcon } from "@/components/site-icon";
 import { moneyShort } from "@/lib/format";
 import { bestBonus, type BonusSlot, type PublicBonus } from "@/lib/public-bonus";
 
-const SLOTS: { key: BonusSlot; label: string }[] = [
-  { key: "signup", label: "SIGNUP" },
-  { key: "share", label: "SHARE" },
-  { key: "daily", label: "DAILY" },
-  { key: "birthday", label: "BIRTHDAY" },
+const SLOTS: { key: BonusSlot; label: [string, string] }[] = [
+  { key: "deposit", label: ["Deposit", "Match"] },
+  { key: "signup", label: ["Free", "Signup"] },
+  { key: "share", label: ["Share", "Invite"] },
+  { key: "daily", label: ["Daily", "Free"] },
+  { key: "birthday", label: ["Birthday", ""] },
 ];
+
+const SLOT_NAME: Record<BonusSlot | "other", string> = {
+  deposit: "Deposit Match",
+  signup: "Free Signup",
+  share: "Share/Invite",
+  daily: "Daily Free",
+  birthday: "Birthday",
+  other: "Other",
+};
 
 function bound(value: number | null): string {
   return value != null && value > 0 ? moneyShort(value) : "—";
@@ -62,10 +72,22 @@ export function BonusCard({
           const bonus = found && found.kind !== "unset" ? found : null;
           return (
             <div key={slot.key} className={bonus ? "acct-chip hot" : "acct-chip"}>
-              <span>{slot.label}</span>
+              <span>
+                {slot.label[0]}
+                {slot.label[1] ? (
+                  <>
+                    <br />
+                    {slot.label[1]}
+                  </>
+                ) : null}
+              </span>
               <strong>{bonus ? bonus.amountDisplay : "—"}</strong>
               <small>
-                ↓ {bound(bonus?.minWithdraw ?? null)} ↑ {bound(bonus?.maxWithdraw ?? null)}
+                {slot.key === "deposit"
+                  ? bonus?.minDeposit != null
+                    ? `Dep ${moneyShort(bonus.minDeposit)}`
+                    : "—"
+                  : `↓ ${bound(bonus?.minWithdraw ?? null)} ↑ ${bound(bonus?.maxWithdraw ?? null)}`}
               </small>
             </div>
           );
@@ -79,7 +101,7 @@ export function BonusCard({
                 <div>
                   <strong>{bonus.name}</strong>
                   <span>
-                    {bonus.slot === "other" ? "Other" : bonus.slot} · {bonus.kind}
+                    {SLOT_NAME[bonus.slot]} · {bonus.kind}
                     {bonus.rollover != null ? ` · Rollover ${bonus.rollover}x` : ""}
                     {bonus.minDeposit != null ? ` · Deposit ${moneyShort(bonus.minDeposit)}` : ""}
                     {` · Min ${bound(bonus.minWithdraw)} · Max ${bound(bonus.maxWithdraw)}`}

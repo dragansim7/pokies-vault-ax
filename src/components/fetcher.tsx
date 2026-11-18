@@ -1,13 +1,15 @@
 import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { ChevronLeft, Eye, EyeOff, Loader2 } from "lucide-react";
+import { ChevronLeft, Eye, EyeOff, Loader2, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { visibleSites } from "@/lib/working-sites";
 import { useVault, type AttentionMark, type FallbackCred } from "@/components/vault";
 import { SiteIcon } from "@/components/site-icon";
 import { AccountCard } from "@/components/account-card";
 import { fetchCasinoBatchFn } from "@/lib/casino.functions";
-import { fetchAccountOnDevice, isInstalledPhone } from "@/lib/fetch-on-device";
+import { listFetchRunsFn, recordFetchRunFn } from "@/lib/fetch-log.functions";
+import type { FetchRunReport } from "@/lib/fetch-log.server";
+import { fetchAccountOnDevice } from "@/lib/fetch-on-device";
 import { isPublicDomain, normalizeDomain } from "@/lib/domain";
 import { money, formatAdded } from "@/lib/format";
 import { compareSites } from "@/lib/order";
@@ -17,9 +19,10 @@ const PAGE = 12;
 const BATCH = 10;
 const RUN_KEY = "vault-run";
 const KNOWN_KEY = "pokies_vault_known_systems_v1";
-const MIN_WORKERS = 6;
-const START_WORKERS = 8;
-const MAX_WORKERS = 20;
+const MIN_WORKERS = 1;
+const START_WORKERS = 2;
+const VAULT_WORKERS = 2;
+const GAP_MS = 1500;
 
 type RunCheckpoint = { at: number; done: string[]; rows: AccountRow[] };
 
@@ -427,6 +430,8 @@ function NeedsAttention({
 export function Fetcher() {
   const { state, patch, rememberAccount, rememberLogins, saveFetch } = useVault();
   const fetchBatch = useServerFn(fetchCasinoBatchFn);
+  const recordFetchRun = useServerFn(recordFetchRunFn);
+  const listFetchRuns = useServerFn(listFetchRunsFn);
   const [onDevice, setOnDevice] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [advanced, setAdvanced] = useState(false);
@@ -442,6 +447,11 @@ export function Fetcher() {
   const [diffs, setDiffs] = useState<ChangeNote[]>([]);
   const [comparedAt, setComparedAt] = useState<number | null>(null);
   const [pendingRun, setPendingRun] = useState<RunCheckpoint | null>(null);
+  const [outgoing, setOutgoing] = useState<{ ip: string; isp: string; place: string } | null>(null);
+  const [outgoingError, setOutgoingError] = useState("");
+  const [outgoingLoading, setOutgoingLoading] = useState(false);
+  const [outgoingTick, setOutgoingTick] = useState(0);
+  const [sharedRuns, setSharedRuns] = useState<FetchRunReport[]>([]);
   const stopRef = useRef<AbortController | null>(null);
   const onDeviceRef = useRef(false);
   const liveRef = useRef(live);
@@ -449,10 +459,53 @@ export function Fetcher() {
   rowsRef.current = rows;
 
   useEffect(() => {
-    const installed = isInstalledPhone();
-    onDeviceRef.current = installed;
-    setOnDevice(installed);
+    onDeviceRef.current = true;
+    setOnDevice(true);
   }, []);
+
+  useEffect(() => {
+    void listFetchRuns()
+      .then((runs) => setSharedRuns(runs))
+      .catch(() => setSharedRuns([]));
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setOutgoingLoading(true);
+    setOutgoingError("");
+    const load = async () => {
+      const response = await fetch("https://ipwho.is/", { cache: "no-store" });
+      const data = (await response.json()) as {
+        success?: boolean;
+        ip?: string;
+        city?: string;
+        country_code?: string;
+        connection?: { isp?: string; org?: string };
+      };
+      if (!data.success || !data.ip) throw new Error("no ip");
+      return {
+        ip: data.ip,
+        isp: data.connection?.isp || data.connection?.org || "Unknown network",
+        place: [data.city, data.country_code].filter(Boolean).join(", "),
+      };
+    };
+    void load()
+      .then((info) => {
+        if (!cancelled) setOutgoing(info);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setOutgoing(null);
+          setOutgoingError("Could not read the outgoing IP");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setOutgoingLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [outgoingTick]);
 
   useEffect(() => {
     if (live.phase !== "running") return;
@@ -536,7 +589,7 @@ export function Fetcher() {
       attempts: 0,
       retries: 0,
       peakQueue: 0,
-      workers: fromPhone ? START_WORKERS : 0,
+      workers: fromPhone ? START_WORKERS : Math.min(VAULT_WORKERS, batches.length),
     };
     liveRef.current = started;
     setLive(started);
@@ -571,12 +624,10 @@ export function Fetcher() {
       const snapshot = [...collected].sort((a, b) => a.domain.localeCompare(b.domain));
       setRows(snapshot);
       setProgress({ done: done.length, total });
-      const queue = Math.max(0, total - done.length);
       liveRef.current = {
         ...liveRef.current,
         done: done.length,
         total,
-        peakQueue: fromPhone ? liveRef.current.peakQueue : Math.max(liveRef.current.peakQueue, queue),
       };
       setLive(liveRef.current);
       if (!merging) {
@@ -619,26 +670,17 @@ export function Fetcher() {
       let limit = START_WORKERS;
       let active = 0;
       let pressure = 0;
-      let clean = 0;
       let spawn = () => {};
       const noteOutcome = (kind: "ok" | "bad") => {
-        const before = limit;
         if (kind === "bad") {
           pressure += 2;
-          clean = 0;
-          if (pressure >= 4 && limit > MIN_WORKERS) {
-            limit = Math.max(MIN_WORKERS, limit - 2);
+          if (pressure >= 2 && limit > MIN_WORKERS) {
+            limit = MIN_WORKERS;
             pressure = 0;
           }
         } else {
           pressure = Math.max(0, pressure - 1);
-          clean += 1;
-          if (clean >= 12 && pressure === 0 && limit < MAX_WORKERS) {
-            limit = Math.min(MAX_WORKERS, limit + 2);
-            clean = 0;
-          }
         }
-        if (limit > before) spawn();
       };
       let knownTimer: number | null = null;
       const queueKnown = () => {
@@ -705,6 +747,8 @@ export function Fetcher() {
                 if (row.code === "invalid_login") {
                   retries += 1;
                   last = row;
+                  if (controller.signal.aborted) return;
+                  await new Promise((resolve) => window.setTimeout(resolve, GAP_MS));
                   continue;
                 }
                 if (row.code === "timeout" || row.code === "captcha") noteOutcome("bad");
@@ -726,7 +770,10 @@ export function Fetcher() {
                 workers: limit,
               };
               publish([last], [{ domain: job.domain, login: null }]);
-            })().finally(() => {
+            })().finally(async () => {
+              if (!controller.signal.aborted) {
+                await new Promise((resolve) => window.setTimeout(resolve, GAP_MS));
+              }
               active -= 1;
               spawn();
               finish();
@@ -739,6 +786,17 @@ export function Fetcher() {
       if (knownTimer != null) window.clearTimeout(knownTimer);
       saveKnown(known);
     } else {
+    const vaultLimit = Math.min(VAULT_WORKERS, batches.length);
+    let vaultActive = 0;
+    const noteVault = (delta: number) => {
+      vaultActive = Math.max(0, vaultActive + delta);
+      liveRef.current = {
+        ...liveRef.current,
+        workers: vaultActive,
+        peakQueue: Math.max(liveRef.current.peakQueue, vaultActive),
+      };
+      setLive(liveRef.current);
+    };
     const worker = async () => {
       for (;;) {
         if (controller.signal.aborted) return;
@@ -747,6 +805,8 @@ export function Fetcher() {
         if (index >= batches.length) return;
         const batch = batches[index];
         if (!batch) return;
+        noteVault(1);
+        try {
         let pending = batch.domains;
         const settled = new Map<string, AccountRow>();
         const loginNotes: { domain: string; login: FallbackCred | null }[] = [];
@@ -778,6 +838,8 @@ export function Fetcher() {
               fetchMs: liveRef.current.fetchMs + (Date.now() - startedTry),
               attempts: liveRef.current.attempts + Math.max(result.length, pending.length),
               retries: liveRef.current.retries + retry.length,
+              workers: vaultActive,
+              peakQueue: Math.max(liveRef.current.peakQueue, vaultActive),
             };
             setLive(liveRef.current);
             pending = retry;
@@ -798,9 +860,12 @@ export function Fetcher() {
           batch.domains.map((domain) => settled.get(domain) ?? { domain, ok: false, code: "other", message: "Check failed" }),
           loginNotes,
         );
+        } finally {
+          noteVault(-1);
+        }
       }
     };
-    await Promise.all(Array.from({ length: Math.min(4, batches.length) }, () => worker()));
+    await Promise.all(Array.from({ length: vaultLimit }, () => worker()));
     }
     if (paintTimer != null) {
       window.clearTimeout(paintTimer);
@@ -838,6 +903,29 @@ export function Fetcher() {
       done: done.length,
     };
     setLive(liveRef.current);
+    const counts: Record<string, number> = {};
+    for (const row of finalRows) {
+      if (row.ok) continue;
+      counts[row.code] = (counts[row.code] ?? 0) + 1;
+    }
+    const report: FetchRunReport = {
+      at: liveRef.current.finishedAt ?? Date.now(),
+      source: fromPhone ? "phone" : "vault",
+      total: finalRows.length,
+      signedIn,
+      rejected: finalRows.length - signedIn,
+      attempts: liveRef.current.attempts,
+      retries: liveRef.current.retries,
+      workers: liveRef.current.workers,
+      peak: liveRef.current.peakQueue,
+      wallMs: liveRef.current.startedAt ? (liveRef.current.finishedAt ?? Date.now()) - liveRef.current.startedAt : 0,
+      counts,
+      signedInDomains: finalRows.filter((row) => row.ok).map((row) => row.domain).slice(0, 40),
+    };
+    void recordFetchRun({ data: report })
+      .then(() => listFetchRuns())
+      .then((runs) => setSharedRuns(runs))
+      .catch(() => undefined);
     setStatus(
       !stored
         ? "Finished, but this phone could not store the result. Leave the app open and try the fetch again."
@@ -864,8 +952,8 @@ export function Fetcher() {
           Fetch bonus data
         </h1>
         <p className="hint">
-          Each site is signed in with the phone and password that worked there last time. New sites try the
-          login below, then any fallbacks. A hit is remembered on this device and used first next time.
+          Sign-in stays on this device, two sites at a time, with a short gap. The password is not sent through
+          the vault. A hit is remembered here and used first next time.
         </p>
         {Object.keys(state.logins).length ? (
           <p className="hint">{Object.keys(state.logins).length} sites have a saved login.</p>
@@ -932,9 +1020,7 @@ export function Fetcher() {
             ))
           : null}
         <p className="hint">
-          {onDevice
-            ? "Saved only on this phone. Sign-in goes straight from this phone to the site. The password is not sent through the vault. Up and down checks still use the vault."
-            : "Saved only in this browser. The server uses them to sign in and does not keep them."}
+          Saved only in this browser. Sign-in goes from this browser, so the casino sees the address below.
         </p>
         <div className="actions">
           <button
@@ -1035,6 +1121,30 @@ export function Fetcher() {
             </button>
           </>
         ) : null}
+        <div className="ip-card ip-card-local">
+          <div className="ip-card-top">
+            <p className="ip-card-title">
+              Outgoing IP: {outgoingLoading ? "Checking…" : outgoing?.ip || "—"}
+            </p>
+            <span className="ip-badge">Local device IP</span>
+            <button
+              type="button"
+              className="ip-refresh"
+              aria-label="Check the outgoing IP again"
+              onClick={() => setOutgoingTick((value) => value + 1)}
+            >
+              <RefreshCw size={16} className={outgoingLoading ? "spin" : undefined} />
+            </button>
+          </div>
+          <p className="ip-card-line">
+            <span className="ip-dot" aria-hidden="true" />
+            {outgoing ? [outgoing.isp, outgoing.place].filter(Boolean).join(" · ") : outgoingError || "Reading the address casinos will see"}
+          </p>
+          <p className="ip-card-line">
+            <span className="ip-check" aria-hidden="true" />
+            Sign-in from this browser · casinos see this IP
+          </p>
+        </div>
         <div className="panel live-fetch">
           <h2 className="section-label">Live fetch</h2>
           <p className="live-via">{viaLabel(live.phase === "idle" ? onDevice : live.fromPhone)}</p>
@@ -1057,6 +1167,24 @@ export function Fetcher() {
             Retries {live.retries} · attempts {live.attempts}
           </p>
         </div>
+        {sharedRuns.length ? (
+          <div className="panel">
+            <h2 className="section-label">Runs from phone and browser</h2>
+            <ul className="diff">
+              {sharedRuns.slice(0, 8).map((run) => (
+                <li key={run.at}>
+                  <span className="diff-copy">
+                    <strong>{run.source === "phone" ? "Phone" : "Vault"}</strong>
+                    <span>
+                      {run.signedIn} signed in · {run.rejected} rejected · {run.total} sites
+                    </span>
+                  </span>
+                  <span>{formatAdded(new Date(run.at).toISOString())}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
         <p className="progress-line">{viaLabel(live.phase === "idle" ? onDevice : live.fromPhone)}. {status}</p>
         {progress.total > 0 ? (
           <div className="bar" aria-hidden="true">
@@ -1153,8 +1281,9 @@ export function Fetcher() {
           <div className="modal-card stack" onClick={(event) => event.stopPropagation()}>
             <h3>Scan every listed site?</h3>
             <p className="hint">
-              Sites that already signed in use that saved login. The rest try the phone and password above, then
-              any fallbacks. It can take several minutes. You can stop it at any time.
+              Sites that already signed in use that saved login. The rest try the phone and password above.
+              Logins are paced so the sites see a normal visit, not a burst. A full scan takes longer. You can
+              stop it at any time.
             </p>
             <div className="actions">
               <button type="button" className="btn" onClick={() => setConfirmScan(false)}>

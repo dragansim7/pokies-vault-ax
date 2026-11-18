@@ -1,4 +1,4 @@
-export type BonusSlot = "signup" | "share" | "daily" | "birthday";
+export type BonusSlot = "deposit" | "signup" | "share" | "daily" | "birthday";
 export type BonusKind = "fixed" | "percent" | "random" | "unset";
 
 export type PublicBonus = {
@@ -14,11 +14,22 @@ export type PublicBonus = {
   minDeposit: number | null;
 };
 
-export type CatalogueHit =
-  | { domain: string; ok: true; bonuses: PublicBonus[] }
-  | { domain: string; ok: false; message: string };
+export type CatalogueHit = {
+  domain: string;
+  ok: boolean;
+  bonuses: PublicBonus[];
+  message?: string;
+  host?: string;
+  merchantId?: string;
+};
 
-const SLOTS: BonusSlot[] = ["signup", "share", "daily", "birthday"];
+export type CatalogueQuery = {
+  domain: string;
+  host?: string;
+  merchantId?: string;
+};
+
+const SLOTS: BonusSlot[] = ["deposit", "signup", "share", "daily", "birthday"];
 
 export function isSlot(value: string): value is BonusSlot {
   return SLOTS.includes(value as BonusSlot);
@@ -59,12 +70,16 @@ function claimConfig(value: unknown): Record<string, unknown> {
   return asRecord(value) ?? {};
 }
 
-function slotOf(name: string, custom: string): BonusSlot | "other" {
+function slotOf(name: string, custom: string, minTopup: number | null, percent: number): BonusSlot | "other" {
   const text = `${name} ${custom}`.toLowerCase();
   if (/birth|b-?day/.test(text)) return "birthday";
   if (/share|refer|invite|downline/.test(text)) return "share";
+  const needsDeposit = minTopup != null && minTopup > 0;
+  if (needsDeposit && percent > 0) return "deposit";
   if (/\bdaily\b|every day/.test(text)) return "daily";
-  if (/sign\s?up|register|no deposit|welcome/.test(text)) return "signup";
+  if (/sign\s?up|register|no deposit|welcome|new register|free credit/.test(text)) {
+    return needsDeposit ? "deposit" : "signup";
+  }
   return "other";
 }
 
@@ -117,7 +132,7 @@ export function parsePublicPromotions(raw: unknown): PublicBonus[] {
     out.push({
       id: String(row.id ?? name),
       name,
-      slot: slotOf(name, custom),
+      slot: slotOf(name, custom, minDeposit, percent),
       kind,
       amount,
       amountDisplay,
@@ -140,5 +155,11 @@ function rank(bonus: PublicBonus): number {
 export function bestBonus(bonuses: PublicBonus[], slot: BonusSlot): PublicBonus | null {
   const matches = bonuses.filter((bonus) => bonus.slot === slot);
   if (!matches.length) return null;
-  return [...matches].sort((a, b) => rank(b) - rank(a))[0] ?? null;
+  return [...matches].sort((a, b) => {
+    if (slot === "deposit") {
+      const match = (bonus: PublicBonus) => (bonus.kind === "percent" ? bonus.amount : -1);
+      return match(b) - match(a);
+    }
+    return rank(b) - rank(a);
+  })[0] ?? null;
 }

@@ -1,4 +1,4 @@
-import { i as __toESM, r as __require, t as __commonJSMin } from "../../_runtime.mjs";
+import { i as __require, o as __toESM, t as __commonJSMin } from "../../_runtime.mjs";
 import { i as parseHref, r as normalizeProtocolRelative } from "../tanstack__history.mjs";
 import { PassThrough, Readable } from "node:stream";
 //#region node_modules/react/cjs/react.production.js
@@ -7354,6 +7354,31 @@ function useNavigate(_defaultOpts) {
 			from: options.from ?? _defaultOpts?.from
 		});
 	}, [_defaultOpts?.from, router]);
+}
+/**
+* Component that triggers a navigation when rendered. Navigation executes
+* in an effect after mount/update.
+*
+* Props are the same as `NavigateOptions` used by `navigate()`.
+*
+* @returns null
+* @link https://tanstack.com/router/latest/docs/framework/react/api/router/navigateComponent
+*/
+function Navigate(props) {
+	const router = useRouter();
+	const navigate = useNavigate();
+	const previousPropsRef = import_react.useRef(null);
+	useLayoutEffect(() => {
+		if (previousPropsRef.current !== props) {
+			navigate(props);
+			previousPropsRef.current = props;
+		}
+	}, [
+		router,
+		props,
+		navigate
+	]);
+	return null;
 }
 //#endregion
 //#region node_modules/@tanstack/react-router/dist/esm/useRouteContext.js
@@ -18296,4 +18321,4 @@ var renderRouterToStream = async ({ request, router, responseHeaders, children }
 	}
 };
 //#endregion
-export { createInlineCssPlaceholderAsset as A, createSieveCache as B, createPlugin as C, isStream as D, fromJSON as E, resolveManifestCssLink as F, isRedirect as G, isDangerousProtocol as H, waitForReason as I, isNotFound as J, parseRedirect as K, _getRenderedMatches as L, getScriptPreloadAttrs as M, getStylesheetHref as N, toCrossJSONAsync as O, resolveManifestAssetLink as P, executeRewriteInput as R, require_jsx_runtime as S, crossSerializeStream as T, isPromise as U, decodePath as V, dehydrateSsrMatchId as W, require_react as Y, lazyRouteComponent as _, isSsrResponse as a, Link as b, stripSsrResponseBody as c, Scripts as d, HeadContent as f, Outlet as g, createRouter as h, disposeSsrResponse as i, createInlineCssStyleAsset as j, toCrossJSONStream as k, createHydrationScripts as l, RouterProvider as m, bindSsrResponseToRequest as n, normalizeSsrResponse as o, useRouterState as p, rootRouteId as q, defineHandlerCallback as r, replaceSsrResponse as s, renderRouterToStream as t, GLOBAL_TSR as u, createFileRoute as v, createStream as w, useRouter as x, createRootRoute as y, invariant as z };
+export { toCrossJSONAsync as A, executeRewriteInput as B, useRouter as C, crossSerializeStream as D, createStream as E, getStylesheetHref as F, isPromise as G, createSieveCache as H, resolveManifestAssetLink as I, parseRedirect as J, dehydrateSsrMatchId as K, resolveManifestCssLink as L, createInlineCssPlaceholderAsset as M, createInlineCssStyleAsset as N, fromJSON as O, getScriptPreloadAttrs as P, waitForReason as R, Navigate as S, createPlugin as T, decodePath as U, invariant as V, isDangerousProtocol as W, isNotFound as X, rootRouteId as Y, require_react as Z, Outlet as _, disposeSsrResponse as a, createRootRoute as b, replaceSsrResponse as c, GLOBAL_TSR as d, Scripts as f, createRouter as g, RouterProvider as h, defineHandlerCallback as i, toCrossJSONStream as j, isStream as k, stripSsrResponseBody as l, useRouterState as m, require_react_dom as n, isSsrResponse as o, HeadContent as p, isRedirect as q, bindSsrResponseToRequest as r, normalizeSsrResponse as s, renderRouterToStream as t, createHydrationScripts as u, lazyRouteComponent as v, require_jsx_runtime as w, Link as x, createFileRoute as y, _getRenderedMatches as z };

@@ -1,0 +1,36 @@
+{
+  "url": "http://127.0.0.1:8080/login",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "Pokies Vault",
+      "hasCanvas": false,
+      "bodyTextLen": 210,
+      "bodyTextHash": "3c6de2fbd4f98005e656fcfdf4541501a8238e800f6a4508900d25d9ad4414cd",
+      "bodyTextPrefix": "PRIVATE ACCOUNTS Pokies Vault Sign in so your fetch history stay",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/login.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "Pokies Vault",
+      "hasCanvas": false,
+      "bodyTextLen": 210,
+      "bodyTextHash": "3c6de2fbd4f98005e656fcfdf4541501a8238e800f6a4508900d25d9ad4414cd",
+      "bodyTextPrefix": "PRIVATE ACCOUNTS Pokies Vault Sign in so your fetch history stay",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/login-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/login.json"
+}

@@ -1,0 +1,1 @@
+- Sign-in is on: Google, X, and email/password. Fetch runs are stored per signed-in user. Casino passwords stay in the browser. [2026-11-18]

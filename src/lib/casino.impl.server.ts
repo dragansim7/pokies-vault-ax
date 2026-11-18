@@ -1,7 +1,7 @@
 import { isPublicDomain, normalizeDomain } from "@/lib/domain";
 import type { CasinoTarget } from "@/lib/casino-target";
 import { iconFromHtml } from "@/lib/icon-url";
-import { parsePublicPromotions, type CatalogueHit } from "@/lib/public-bonus";
+import { parsePublicPromotions, type CatalogueHit, type CatalogueQuery } from "@/lib/public-bonus";
 import { accountError, parseSyncUser, type AccountRow } from "@/lib/parse-account";
 
 const UA =
@@ -24,18 +24,22 @@ async function postApi(
   host: string,
   fields: Record<string, string>,
   signal: AbortSignal,
+  mode: "plain" | "self" = "self",
 ): Promise<ApiBody> {
+  const headers: Record<string, string> = {
+    "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+    accept: "application/json,text/plain,*/*",
+    "user-agent": UA,
+  };
+  if (mode === "self") {
+    headers.origin = `https://${host}`;
+    headers.referer = `https://${host}/`;
+  }
   const response = await fetch(`https://${host}/api/v1/index.php`, {
     method: "POST",
     redirect: "follow",
     signal,
-    headers: {
-      "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
-      accept: "application/json,text/plain,*/*",
-      origin: `https://${host}`,
-      referer: `https://${host}/`,
-      "user-agent": UA,
-    },
+    headers,
     body: new URLSearchParams(fields),
   });
   const text = await response.text();
@@ -99,6 +103,27 @@ async function readSiteIcon(domain: string): Promise<string> {
   }
 }
 
+export type EgressInfo = {
+  ip: string;
+  isp: string;
+  place: string;
+};
+
+export async function lookupEgress(): Promise<EgressInfo> {
+  const response = await fetch("https://ipwho.is/", { signal: AbortSignal.timeout(8_000) });
+  const data = (await response.json()) as {
+    success?: boolean;
+    ip?: string;
+    city?: string;
+    country_code?: string;
+    connection?: { isp?: string; org?: string };
+  };
+  if (!data.success || !data.ip) throw new Error("no ip");
+  const isp = data.connection?.isp || data.connection?.org || "Unknown network";
+  const place = [data.city, data.country_code].filter(Boolean).join(", ");
+  return { ip: data.ip, isp, place };
+}
+
 export async function inspectCasino(rawDomain: string): Promise<CasinoTarget> {
   const domain = normalizeDomain(rawDomain);
   if (!isPublicDomain(domain)) {
@@ -152,34 +177,98 @@ export async function resolveCasinoTargets(domains: string[]): Promise<CasinoTar
   return out;
 }
 
-export async function loadPublicCatalogue(rawDomains: string[]): Promise<CatalogueHit[]> {
-  const domains = rawDomains.slice(0, 4);
-  const targets = await resolveCasinoTargets(domains);
+const merchantMemory = new Map<string, { host: string; merchantId: string }>();
+
+async function readMerchant(domain: string): Promise<{ host: string; merchantId: string } | null> {
+  const response = await fetch(`https://${domain}/`, {
+    redirect: "follow",
+    signal: AbortSignal.timeout(10_000),
+    headers: { accept: "text/html", "user-agent": UA },
+  });
+  if (!response.ok || !response.body) return null;
+  const finalHost = normalizeDomain(new URL(response.url).hostname);
+  const host = isPublicDomain(finalHost) ? finalHost : domain;
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let html = "";
+  let merchantId = "";
+  while (html.length < 700_000) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    html += decoder.decode(value, { stream: true });
+    const found = html.match(/MERCHANTID\s*=\s*(\d+)/);
+    if (found?.[1]) {
+      merchantId = found[1];
+      break;
+    }
+  }
+  await reader.cancel().catch(() => undefined);
+  return merchantId ? { host, merchantId } : null;
+}
+
+export async function loadPublicCatalogue(raw: CatalogueQuery[]): Promise<CatalogueHit[]> {
+  const items = raw.slice(0, 4);
   return Promise.all(
-    targets.map(async (target): Promise<CatalogueHit> => {
-      if (!target.ok) return { domain: target.domain, ok: false, message: target.message };
-      if (!target.merchantId) {
-        return { domain: target.domain, ok: false, message: "This site did not publish a bonus list" };
+    items.map(async (item): Promise<CatalogueHit> => {
+      const domain = normalizeDomain(item.domain);
+      if (!isPublicDomain(domain)) {
+        return { domain: domain || "domain", ok: false, bonuses: [], message: "Enter a real site domain" };
       }
+      const givenId = item.merchantId && /^\d{1,12}$/.test(item.merchantId) ? item.merchantId : "";
+      const givenHost = item.host ? normalizeDomain(item.host) : "";
+      let host = "";
+      let merchantId = "";
+      if (givenId && isPublicDomain(givenHost || domain)) {
+        host = isPublicDomain(givenHost) ? givenHost : domain;
+        merchantId = givenId;
+      } else {
+        const remembered = merchantMemory.get(domain);
+        if (remembered) {
+          host = remembered.host;
+          merchantId = remembered.merchantId;
+        }
+      }
+      if (!merchantId) {
+        try {
+          const streamed = await readMerchant(domain);
+          if (streamed) {
+            host = streamed.host;
+            merchantId = streamed.merchantId;
+          } else {
+            const inspected = await inspectCasino(domain);
+            if (!inspected.ok) {
+              return { domain, ok: false, bonuses: [], message: inspected.message };
+            }
+            host = inspected.host;
+            merchantId = inspected.merchantId;
+          }
+        } catch {
+          return { domain, ok: false, bonuses: [], message: "Could not reach site" };
+        }
+      }
+      if (!merchantId) {
+        return { domain, ok: false, bonuses: [], message: "This site did not publish a bonus list" };
+      }
+      merchantMemory.set(domain, { host, merchantId });
       try {
         const pub = await postApi(
-          target.host,
+          host,
           {
             module: "/merchants/getPublicInfo",
-            merchantId: target.merchantId,
+            merchantId,
             accessId: "",
             accessToken: "",
             walletIsAdmin: "",
           },
-          AbortSignal.timeout(18_000),
+          AbortSignal.timeout(10_000),
         );
         if (pub.status !== "SUCCESS") {
-          return { domain: target.domain, ok: false, message: "Bonus list did not load" };
+          return { domain, ok: false, bonuses: [], message: "Bonus list did not load", host, merchantId };
         }
         const body = pub.data && typeof pub.data === "object" ? (pub.data as { promotions?: unknown }) : null;
-        return { domain: target.domain, ok: true, bonuses: parsePublicPromotions(body?.promotions) };
+        return { domain, ok: true, bonuses: parsePublicPromotions(body?.promotions), host, merchantId };
       } catch {
-        return { domain: target.domain, ok: false, message: "Could not reach the bonus list" };
+        return { domain, ok: false, bonuses: [], message: "Could not reach the bonus list", host, merchantId };
       }
     }),
   );
@@ -203,16 +292,26 @@ export async function fetchCasinoAccount(input: {
     return accountError(domain, "other", "Password should be 4–64 characters");
   }
 
-  const target = await inspectCasino(domain);
-  if (!target.ok) return accountError(target.domain, target.code, target.message);
+  const target: Extract<CasinoTarget, { ok: true }> = { domain, ok: true, host: domain, merchantId: "" };
+  try {
+    const inspected = await inspectCasino(domain);
+    if (inspected.ok && inspected.merchantId) {
+      target.host = inspected.host;
+      target.merchantId = inspected.merchantId;
+    }
+  } catch {
+    /* A blank or blocked homepage must not stop the login. */
+  }
 
   const signal = AbortSignal.timeout(18_000);
   try {
+    const usedMerchant = target.merchantId;
+    const usedMode: "plain" | "self" = target.merchantId ? "self" : "plain";
     const login = await postApi(
       target.host,
       {
         module: "/users/login",
-        merchantId: target.merchantId,
+        merchantId: usedMerchant,
         accessId: "",
         accessToken: "",
         walletIsAdmin: "",
@@ -220,6 +319,7 @@ export async function fetchCasinoAccount(input: {
         password,
       },
       signal,
+      usedMode,
     );
 
     if (login.status !== "SUCCESS") {
@@ -242,13 +342,14 @@ export async function fetchCasinoAccount(input: {
       target.host,
       {
         module: "/users/syncData",
-        merchantId: target.merchantId,
+        merchantId: usedMerchant,
         accessId,
         accessToken,
         walletIsAdmin: "",
         background: "1",
       },
       signal,
+      usedMode,
     );
 
     if (synced.status !== "SUCCESS") {
@@ -297,7 +398,7 @@ export async function fetchCasinoBatch(input: {
   const out: AccountRow[] = new Array(domains.length);
   let cursor = 0;
   await Promise.all(
-    Array.from({ length: Math.min(6, domains.length) }, async () => {
+    Array.from({ length: Math.min(2, domains.length) }, async () => {
       for (;;) {
         const i = cursor++;
         if (i >= domains.length) return;

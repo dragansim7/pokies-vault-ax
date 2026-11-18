@@ -1,38 +1,37 @@
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BonusCard } from "@/components/bonus-card";
 import { useVault } from "@/components/vault";
 import { loadPublicCatalogueFn } from "@/lib/casino.functions";
 import { visibleSites } from "@/lib/working-sites";
-import { type BonusKind, type BonusSlot, type PublicBonus } from "@/lib/public-bonus";
+import { bestBonus, type BonusSlot, type PublicBonus } from "@/lib/public-bonus";
 
 const CACHE_KEY = "pokies_vault_bonus_catalogue_v1";
 const PAGE = 20;
 
-type CacheRow = { bonuses: PublicBonus[]; message?: string };
+type CacheRow = { bonuses: PublicBonus[]; message?: string; host?: string; merchantId?: string };
+
+type AmountSort = "" | "deposit" | "amount" | "withdraw" | "turnover";
 
 type Filters = {
   slots: BonusSlot[];
-  kind: "any" | BonusKind;
-  amountMin: string;
-  amountMax: string;
-  rollMin: string;
-  rollMax: string;
-  maxMin: string;
-  maxMax: string;
-  sort: "list" | "amount" | "rollover" | "cashout" | "az";
+  list: BonusSlot | "";
+  amount: AmountSort;
 };
+
+const FILTER_SLOTS: { id: BonusSlot; label: string }[] = [
+  { id: "deposit", label: "Deposit Match" },
+  { id: "signup", label: "Free Signup" },
+  { id: "share", label: "Share/Invite" },
+  { id: "daily", label: "Daily Free" },
+  { id: "birthday", label: "Birthday" },
+];
 
 const EMPTY_FILTERS: Filters = {
   slots: [],
-  kind: "any",
-  amountMin: "",
-  amountMax: "",
-  rollMin: "",
-  rollMax: "",
-  maxMin: "",
-  maxMax: "",
-  sort: "list",
+  list: "",
+  amount: "",
 };
 
 function readCache(): Record<string, CacheRow> {
@@ -53,54 +52,19 @@ function writeCache(cache: Record<string, CacheRow>) {
   }
 }
 
-function numberOrNull(value: string): number | null {
-  if (!value.trim()) return null;
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
+function passes(bonus: PublicBonus, slots: BonusSlot[]): boolean {
+  return bonus.slot !== "other" && slots.includes(bonus.slot);
 }
 
-function passes(bonus: PublicBonus, filters: Filters): boolean {
-  if (filters.slots.length && (bonus.slot === "other" || !filters.slots.includes(bonus.slot))) return false;
-  if (filters.kind !== "any" && bonus.kind !== filters.kind) return false;
-  const amountMin = numberOrNull(filters.amountMin);
-  const amountMax = numberOrNull(filters.amountMax);
-  const rollMin = numberOrNull(filters.rollMin);
-  const rollMax = numberOrNull(filters.rollMax);
-  const maxMin = numberOrNull(filters.maxMin);
-  const maxMax = numberOrNull(filters.maxMax);
-  if (amountMin != null && bonus.amount < amountMin) return false;
-  if (amountMax != null && bonus.amount > amountMax) return false;
-  if (rollMin != null && (bonus.rollover == null || bonus.rollover < rollMin)) return false;
-  if (rollMax != null && (bonus.rollover == null || bonus.rollover > rollMax)) return false;
-  if (maxMin != null && (bonus.maxWithdraw == null || bonus.maxWithdraw < maxMin)) return false;
-  if (maxMax != null && (bonus.maxWithdraw == null || bonus.maxWithdraw > maxMax)) return false;
-  return true;
-}
-
-function filtersActive(filters: Filters): boolean {
-  return (
-    filters.slots.length > 0 ||
-    filters.kind !== "any" ||
-    filters.amountMin !== "" ||
-    filters.amountMax !== "" ||
-    filters.rollMin !== "" ||
-    filters.rollMax !== "" ||
-    filters.maxMin !== "" ||
-    filters.maxMax !== ""
-  );
-}
-
-function score(bonuses: PublicBonus[], filters: Filters): number {
-  const pool = bonuses.filter((bonus) => passes(bonus, filters));
-  if (filters.sort === "rollover") {
-    const rolls = pool.map((bonus) => bonus.rollover).filter((value): value is number => value != null);
-    return rolls.length ? Math.min(...rolls) : Number.POSITIVE_INFINITY;
-  }
-  if (filters.sort === "cashout") {
-    const maxes = pool.map((bonus) => bonus.maxWithdraw).filter((value): value is number => value != null);
-    return maxes.length ? Math.max(...maxes) : -1;
-  }
-  return pool.reduce((best, bonus) => Math.max(best, bonus.amount), 0);
+function metricOf(bonuses: PublicBonus[], filters: Filters): number | null {
+  if (!filters.amount) return null;
+  const slot = filters.amount === "deposit" ? "deposit" : filters.list;
+  if (!slot) return null;
+  const bonus = bestBonus(bonuses, slot);
+  if (!bonus || bonus.kind === "unset") return null;
+  if (filters.amount === "turnover") return bonus.rollover ?? 0;
+  if (filters.amount === "withdraw") return bonus.maxWithdraw;
+  return bonus.amount;
 }
 
 export function BonusFinder() {
@@ -110,7 +74,10 @@ export function BonusFinder() {
   loadRef.current = loadFn;
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [cache, setCache] = useState<Record<string, CacheRow>>({});
+  const cacheRef = useRef(cache);
+  cacheRef.current = cache;
   const [page, setPage] = useState(0);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
@@ -140,19 +107,22 @@ export function BonusFinder() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     let list = domains.filter((domain) => !q || domain.includes(q));
-    if (filtersActive(filters)) {
+    if (filters.slots.length) {
       list = list.filter((domain) => {
         const row = cache[domain];
         if (!row) return false;
-        return row.bonuses.some((bonus) => passes(bonus, filters));
+        return row.bonuses.some((bonus) => passes(bonus, filters.slots));
       });
     }
-    if (filters.sort === "az") return [...list].sort((a, b) => a.localeCompare(b));
-    if (filters.sort === "list") return list;
-    const direction = filters.sort === "rollover" ? 1 : -1;
-    return [...list].sort((a, b) => {
-      const left = score(cache[a]?.bonuses ?? [], filters);
-      const right = score(cache[b]?.bonuses ?? [], filters);
+    const sorted = [...list].sort((a, b) => a.localeCompare(b));
+    if (!filters.amount || (filters.amount !== "deposit" && !filters.list)) return sorted;
+    const direction = filters.amount === "turnover" ? 1 : -1;
+    return sorted.sort((a, b) => {
+      const left = metricOf(cache[a]?.bonuses ?? [], filters);
+      const right = metricOf(cache[b]?.bonuses ?? [], filters);
+      if (left == null && right == null) return a.localeCompare(b);
+      if (left == null) return 1;
+      if (right == null) return -1;
       return (left - right) * direction || a.localeCompare(b);
     });
   }, [domains, query, filters, cache]);
@@ -190,17 +160,24 @@ export function BonusFinder() {
         if (controller.signal.aborted) return;
         const index = cursor;
         cursor += 4;
-        const batch = unique.slice(index, index + 4);
-        if (!batch.length) return;
+        const names = unique.slice(index, index + 4);
+        if (!names.length) return;
+        const items = names.map((domain) => {
+          const saved = cacheRef.current[domain];
+          return { domain, host: saved?.host, merchantId: saved?.merchantId };
+        });
         try {
-          const result = await loadRef.current({ data: { domains: batch }, signal: controller.signal });
+          const result = await loadRef.current({ data: { items }, signal: controller.signal });
           if (controller.signal.aborted) return;
           setCache((current) => {
             const next = { ...current };
             for (const row of result) {
-              next[row.domain] = row.ok
-                ? { bonuses: row.bonuses }
-                : { bonuses: [], message: row.message };
+              next[row.domain] = {
+                bonuses: row.ok ? row.bonuses : [],
+                message: row.ok ? undefined : row.message,
+                host: row.host || current[row.domain]?.host,
+                merchantId: row.merchantId || current[row.domain]?.merchantId,
+              };
             }
             return next;
           });
@@ -208,17 +185,17 @@ export function BonusFinder() {
           if (controller.signal.aborted) return;
           setCache((current) => {
             const next = { ...current };
-            for (const domain of batch) {
+            for (const domain of names) {
               if (!next[domain]) next[domain] = { bonuses: [], message: "Could not load" };
             }
             return next;
           });
         }
-        done += batch.length;
+        done += names.length;
         setProgress({ done: Math.min(done, unique.length), total: unique.length });
       }
     };
-    await Promise.all(Array.from({ length: Math.min(2, Math.ceil(unique.length / 4)) }, () => worker()));
+    await Promise.all(Array.from({ length: Math.min(5, Math.ceil(unique.length / 4)) }, () => worker()));
     setRunning(false);
     setStatus(controller.signal.aborted ? "Stopped." : "Public bonuses loaded. No password was used.");
   }
@@ -231,7 +208,7 @@ export function BonusFinder() {
         <h1 className="section-label">Bonus Finder</h1>
         <p className="hint">
           The same domains as the main list. Add or remove one in Domain Intel and it changes here. Bonuses are
-          the public signup, share, daily, and birthday offers. No sign-in.
+          the public deposit match, free signup, share, daily, and birthday offers. No sign-in.
         </p>
         <label className="search">
           <input
@@ -244,127 +221,84 @@ export function BonusFinder() {
             }}
           />
         </label>
-        <div className="finder-slots">
-          {(
-            [
-              ["signup", "Signup"],
-              ["share", "Share"],
-              ["daily", "Daily"],
-              ["birthday", "Birthday"],
-            ] as const
-          ).map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              className={filters.slots.includes(id) ? "tool active" : "tool"}
-              onClick={() => toggleSlot(id)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <div className="finder-grid">
-          <label>
-            Sort
-            <select
-              value={filters.sort}
-              onChange={(event) => {
-                setPage(0);
-                setFilters((current) => ({ ...current, sort: event.target.value as Filters["sort"] }));
-              }}
-            >
-              <option value="list">List order</option>
-              <option value="az">Domain A–Z</option>
-              <option value="amount">Highest amount</option>
-              <option value="rollover">Lowest rollover</option>
-              <option value="cashout">Highest max cashout</option>
-            </select>
-          </label>
-          <label>
-            Amount type
-            <select
-              value={filters.kind}
-              onChange={(event) => {
-                setPage(0);
-                const kind = event.target.value;
-                setFilters((current) => ({
-                  ...current,
-                  kind: kind === "fixed" || kind === "percent" || kind === "random" ? kind : "any",
-                }));
-              }}
-            >
-              <option value="any">Any</option>
-              <option value="fixed">Fixed amount</option>
-              <option value="percent">Percent</option>
-              <option value="random">Random range</option>
-            </select>
-          </label>
-          <label>
-            Amount from
-            <input
-              inputMode="decimal"
-              value={filters.amountMin}
-              onChange={(event) => setFilters((current) => ({ ...current, amountMin: event.target.value }))}
-            />
-          </label>
-          <label>
-            Amount to
-            <input
-              inputMode="decimal"
-              value={filters.amountMax}
-              onChange={(event) => setFilters((current) => ({ ...current, amountMax: event.target.value }))}
-            />
-          </label>
-          <label>
-            Rollover from
-            <input
-              inputMode="decimal"
-              value={filters.rollMin}
-              onChange={(event) => setFilters((current) => ({ ...current, rollMin: event.target.value }))}
-            />
-          </label>
-          <label>
-            Rollover to
-            <input
-              inputMode="decimal"
-              value={filters.rollMax}
-              onChange={(event) => setFilters((current) => ({ ...current, rollMax: event.target.value }))}
-            />
-          </label>
-          <label>
-            Max cashout from
-            <input
-              inputMode="decimal"
-              value={filters.maxMin}
-              onChange={(event) => setFilters((current) => ({ ...current, maxMin: event.target.value }))}
-            />
-          </label>
-          <label>
-            Max cashout to
-            <input
-              inputMode="decimal"
-              value={filters.maxMax}
-              onChange={(event) => setFilters((current) => ({ ...current, maxMax: event.target.value }))}
-            />
-          </label>
-        </div>
-        <p className="hint">Amount is dollars for a fixed bonus and the percent number for a percent bonus.</p>
-        <div className="actions">
-          <button type="button" className="btn btn-grad" disabled={running || slice.length === 0} onClick={() => void load(slice)}>
-            Load this page
-          </button>
-          <button
-            type="button"
-            className="btn"
-            disabled={running || filtered.length === 0}
-            onClick={() => void load(filtered)}
-          >
-            Load list
-          </button>
-          <button type="button" className="btn" disabled={!running} onClick={() => stopRef.current?.abort()}>
-            Stop
-          </button>
-        </div>
+        <button
+          type="button"
+          className="filter-toggle"
+          aria-expanded={filtersOpen}
+          onClick={() => setFiltersOpen((open) => !open)}
+        >
+          <span>Sort and filter{filters.slots.length || filters.amount ? " · On" : ""}</span>
+          {filtersOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+        </button>
+        {filtersOpen ? (
+          <div className="finder-box">
+            <div className="finder-slots">
+              {FILTER_SLOTS.map((slot) => (
+                <button
+                  key={slot.id}
+                  type="button"
+                  className={filters.slots.includes(slot.id) ? "tool active" : "tool"}
+                  onClick={() => toggleSlot(slot.id)}
+                >
+                  {slot.label}
+                </button>
+              ))}
+            </div>
+            <div className="finder-grid">
+              <label>
+                List order
+                <select
+                  value={filters.list}
+                  onChange={(event) => {
+                    setPage(0);
+                    const list = event.target.value as Filters["list"];
+                    setFilters((current) => ({ ...current, list }));
+                  }}
+                >
+                  <option value="">All</option>
+                  {FILTER_SLOTS.map((slot) => (
+                    <option key={slot.id} value={slot.id}>
+                      {slot.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Amount type
+                <select
+                  value={filters.amount}
+                  onChange={(event) => {
+                    setPage(0);
+                    const amount = event.target.value as AmountSort;
+                    setFilters((current) => ({ ...current, amount }));
+                  }}
+                >
+                  <option value="">Domain A–Z</option>
+                  <option value="deposit">Highest Deposit Match</option>
+                  <option value="amount">Highest Bonus Amount</option>
+                  <option value="withdraw">Highest Max Withdrawal</option>
+                  <option value="turnover">Lowest Turnover/Wager</option>
+                </select>
+              </label>
+            </div>
+            <div className="actions">
+              <button type="button" className="btn btn-grad" disabled={running || slice.length === 0} onClick={() => void load(slice)}>
+                Load this page
+              </button>
+              <button
+                type="button"
+                className="btn"
+                disabled={running || filtered.length === 0}
+                onClick={() => void load(filtered)}
+              >
+                Load list
+              </button>
+              <button type="button" className="btn" disabled={!running} onClick={() => stopRef.current?.abort()}>
+                Stop
+              </button>
+            </div>
+          </div>
+        ) : null}
         <p className="progress-line">
           {status} {domains.length} domains · {loadedCount} loaded
           {running ? ` · ${progress.done} / ${progress.total}` : ""}

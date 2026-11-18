@@ -1,12 +1,15 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { Gift, Home, Menu, Plus, Radar, Trash2, UserRound, X, Zap } from "lucide-react";
 import { useState, type ReactNode } from "react";
+import { RedirectToSignIn, UserButton } from "@/lib/auth/gates";
+import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { useVault } from "@/components/vault";
 import { THEMES, type ThemeId } from "@/lib/themes";
 
 export function AppFrame({ children }: { children: ReactNode }) {
   const path = useRouterState({ select: (state) => state.location.pathname });
   const { state, addDomain, clearAll, patch } = useVault();
+  const { user, isPending } = useCurrentUserState();
   const [menu, setMenu] = useState(false);
   const [adding, setAdding] = useState(false);
   const [domain, setDomain] = useState("");
@@ -23,6 +26,17 @@ export function AppFrame({ children }: { children: ReactNode }) {
     setAdding(false);
     setMenu(false);
   }
+
+  if (isPending) {
+    return (
+      <main className="wrap">
+        <p className="hint" style={{ padding: "28px 0" }}>
+          Opening Pokies Vault…
+        </p>
+      </main>
+    );
+  }
+  if (!user) return <RedirectToSignIn />;
 
   return (
     <main className="wrap">
@@ -80,6 +94,13 @@ export function AppFrame({ children }: { children: ReactNode }) {
                 <X size={18} />
               </button>
             </div>
+
+            <section className="menu-group">
+              <h3 className="menu-label">Account</h3>
+              <div className="account-chip">
+                <UserButton />
+              </div>
+            </section>
 
             <section className="menu-group">
               <h3 className="menu-label">Go</h3>

@@ -13,6 +13,9 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as BonusesRouteImport } from './routes/bonuses'
 import { Route as FetchRouteImport } from './routes/fetch'
 import { Route as IntelRouteImport } from './routes/intel'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as ApiFetchLogRouteImport } from './routes/api/fetch-log'
+import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -34,18 +37,39 @@ const IntelRoute = IntelRouteImport.update({
   path: '/intel',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiFetchLogRoute = ApiFetchLogRouteImport.update({
+  id: '/api/fetch-log',
+  path: '/api/fetch-log',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
+  id: '/api/auth/$',
+  path: '/api/auth/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/bonuses': typeof BonusesRoute
   '/fetch': typeof FetchRoute
   '/intel': typeof IntelRoute
+  '/login': typeof LoginRoute
+  '/api/fetch-log': typeof ApiFetchLogRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/bonuses': typeof BonusesRoute
   '/fetch': typeof FetchRoute
   '/intel': typeof IntelRoute
+  '/login': typeof LoginRoute
+  '/api/fetch-log': typeof ApiFetchLogRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -53,13 +77,38 @@ export interface FileRoutesById {
   '/bonuses': typeof BonusesRoute
   '/fetch': typeof FetchRoute
   '/intel': typeof IntelRoute
+  '/login': typeof LoginRoute
+  '/api/fetch-log': typeof ApiFetchLogRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/bonuses' | '/fetch' | '/intel'
+  fullPaths:
+    | '/'
+    | '/bonuses'
+    | '/fetch'
+    | '/intel'
+    | '/login'
+    | '/api/fetch-log'
+    | '/api/auth/$'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/bonuses' | '/fetch' | '/intel'
-  id: '__root__' | '/' | '/bonuses' | '/fetch' | '/intel'
+  to:
+    | '/'
+    | '/bonuses'
+    | '/fetch'
+    | '/intel'
+    | '/login'
+    | '/api/fetch-log'
+    | '/api/auth/$'
+  id:
+    | '__root__'
+    | '/'
+    | '/bonuses'
+    | '/fetch'
+    | '/intel'
+    | '/login'
+    | '/api/fetch-log'
+    | '/api/auth/$'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -67,6 +116,9 @@ export interface RootRouteChildren {
   BonusesRoute: typeof BonusesRoute
   FetchRoute: typeof FetchRoute
   IntelRoute: typeof IntelRoute
+  LoginRoute: typeof LoginRoute
+  ApiFetchLogRoute: typeof ApiFetchLogRoute
+  ApiAuthSplatRoute: typeof ApiAuthSplatRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -99,6 +151,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IntelRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/fetch-log': {
+      id: '/api/fetch-log'
+      path: '/api/fetch-log'
+      fullPath: '/api/fetch-log'
+      preLoaderRoute: typeof ApiFetchLogRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/auth/$': {
+      id: '/api/auth/$'
+      path: '/api/auth/$'
+      fullPath: '/api/auth/$'
+      preLoaderRoute: typeof ApiAuthSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -107,6 +180,9 @@ const rootRouteChildren: RootRouteChildren = {
   BonusesRoute: BonusesRoute,
   FetchRoute: FetchRoute,
   IntelRoute: IntelRoute,
+  LoginRoute: LoginRoute,
+  ApiFetchLogRoute: ApiFetchLogRoute,
+  ApiAuthSplatRoute: ApiAuthSplatRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

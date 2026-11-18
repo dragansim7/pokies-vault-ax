@@ -1,4 +1,4 @@
-import { A as createInlineCssPlaceholderAsset, B as createSieveCache, C as createPlugin, D as isStream, I as waitForReason, L as _getRenderedMatches, N as getStylesheetHref, T as crossSerializeStream, V as decodePath, W as dehydrateSsrMatchId, j as createInlineCssStyleAsset, l as createHydrationScripts, q as rootRouteId, u as GLOBAL_TSR, w as createStream, z as invariant } from "./react-router+[...].mjs";
+import { D as crossSerializeStream, E as createStream, F as getStylesheetHref, H as createSieveCache, K as dehydrateSsrMatchId, M as createInlineCssPlaceholderAsset, N as createInlineCssStyleAsset, R as waitForReason, T as createPlugin, U as decodePath, V as invariant, Y as rootRouteId, d as GLOBAL_TSR, k as isStream, u as createHydrationScripts, z as _getRenderedMatches } from "./react-router+[...].mjs";
 //#region node_modules/@tanstack/router-core/dist/esm/ssr/serializer/transformer.js
 /**
 * Create a strongly-typed serialization adapter for SSR hydration.
