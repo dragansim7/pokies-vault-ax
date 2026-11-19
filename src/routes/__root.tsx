@@ -37,7 +37,7 @@ export const Route = createRootRoute({
         <script
           dangerouslySetInnerHTML={{
             __html:
-              'try{var t=JSON.parse(localStorage.getItem("pokies_vault_v1")||"null");if(t&&typeof t.theme==="string")document.documentElement.dataset.theme=t.theme}catch(e){}',
+              'try{var t=JSON.parse(localStorage.getItem("pokies_vault_v1")||"null");if(t&&typeof t.theme==="string")document.documentElement.dataset.theme=t.theme}catch(e){}try{if(sessionStorage.getItem("pokies_intro")==="1")document.documentElement.dataset.intro="seen"}catch(e){}',
           }}
         />
         <PreviewHostBridge />

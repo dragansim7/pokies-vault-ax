@@ -2008,6 +2008,94 @@ html[data-theme="amber"] .attention-row {
   width: 100%;
 }
 
+.login-page.intro-hold .login-card {
+  opacity: 0;
+}
+
+html[data-intro="seen"] .login-page.intro-hold .login-card {
+  opacity: 1;
+}
+
+html[data-intro="seen"] .welcome {
+  display: none;
+}
+
+.login-page.intro-reveal .login-card {
+  animation: login-in 0.9s ease both;
+}
+
+.welcome {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  background: #050507;
+}
+
+.welcome-out {
+  animation: welcome-fade 0.9s ease forwards;
+  pointer-events: none;
+}
+
+.welcome-logo {
+  width: min(280px, 70vw);
+  height: auto;
+  animation: logo-bloom 3.2s ease-in-out both;
+}
+
+@keyframes logo-bloom {
+  0% {
+    opacity: 0;
+    transform: scale(0.94);
+    filter: drop-shadow(0 0 0 transparent);
+  }
+  32% {
+    opacity: 1;
+    transform: scale(1);
+    filter:
+      drop-shadow(0 0 16px rgb(0 229 255 / 55%))
+      drop-shadow(0 0 28px rgb(176 70 255 / 45%));
+  }
+  68% {
+    opacity: 1;
+    transform: scale(1);
+    filter:
+      drop-shadow(0 0 18px rgb(0 229 255 / 50%))
+      drop-shadow(0 0 32px rgb(176 70 255 / 42%));
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.02);
+    filter: drop-shadow(0 0 8px rgb(120 80 200 / 15%));
+  }
+}
+
+@keyframes welcome-fade {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes login-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .welcome,
+  .welcome-logo,
+  .login-page.intro-reveal .login-card {
+    animation: none;
+  }
+}
+
 .account-chip {
   padding: 8px 4px 2px;
 }
