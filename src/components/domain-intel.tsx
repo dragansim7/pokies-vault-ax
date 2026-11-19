@@ -56,6 +56,7 @@ export function DomainIntel() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [entry, setEntry] = useState("");
   const [filter, setFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState<CheckStatus | null>(null);
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
   const [running, setRunning] = useState(false);
@@ -70,8 +71,12 @@ export function DomainIntel() {
   );
   const shown = useMemo(() => {
     const q = filter.trim().toLowerCase();
-    return q ? domains.filter((domain) => domain.includes(q)) : domains;
-  }, [domains, filter]);
+    return domains.filter((domain) => {
+      if (q && !domain.includes(q)) return false;
+      if (!statusFilter) return true;
+      return checks[domain]?.status === statusFilter;
+    });
+  }, [domains, filter, checks, statusFilter]);
 
   const migrated = useRef(false);
 
@@ -105,7 +110,7 @@ export function DomainIntel() {
 
   useEffect(() => {
     setVisibleCount(80);
-  }, [filter]);
+  }, [filter, statusFilter]);
 
   const allSelected = shown.length > 0 && shown.every((domain) => selected.has(domain));
   const someSelected = shown.some((domain) => selected.has(domain)) && !allSelected;
@@ -299,11 +304,41 @@ export function DomainIntel() {
       </div>
 
       <div className="intel-counts">
-        <span>{domains.length} total</span>
-        <span className="up">{counts.up} up</span>
-        <span className="slow">{counts.slow} slow</span>
-        <span className="redirect">{counts.redirect} redirect</span>
-        <span className="down">{counts.down} down</span>
+        <button
+          type="button"
+          className={statusFilter === null ? "on" : ""}
+          onClick={() => setStatusFilter(null)}
+        >
+          {domains.length} total
+        </button>
+        <button
+          type="button"
+          className={`up${statusFilter === "live" ? " on" : ""}`}
+          onClick={() => setStatusFilter((value) => (value === "live" ? null : "live"))}
+        >
+          {counts.up} up
+        </button>
+        <button
+          type="button"
+          className={`slow${statusFilter === "slow" ? " on" : ""}`}
+          onClick={() => setStatusFilter((value) => (value === "slow" ? null : "slow"))}
+        >
+          {counts.slow} slow
+        </button>
+        <button
+          type="button"
+          className={`redirect${statusFilter === "redirect" ? " on" : ""}`}
+          onClick={() => setStatusFilter((value) => (value === "redirect" ? null : "redirect"))}
+        >
+          {counts.redirect} redirect
+        </button>
+        <button
+          type="button"
+          className={`down${statusFilter === "dead" ? " on" : ""}`}
+          onClick={() => setStatusFilter((value) => (value === "dead" ? null : "dead"))}
+        >
+          {counts.down} down
+        </button>
       </div>
 
       <div className="panel stack">
@@ -398,7 +433,11 @@ export function DomainIntel() {
       ) : (
         <div className="panel">
           <p className="hint" style={{ margin: 0 }}>
-            {domains.length ? "No domains match that search." : "No domains yet. Add one above, or import a .txt file."}
+            {domains.length
+              ? statusFilter
+                ? `No ${LABEL[statusFilter].toLowerCase()} domains.`
+                : "No domains match that search."
+              : "No domains yet. Add one above, or import a .txt file."}
           </p>
         </div>
       )}

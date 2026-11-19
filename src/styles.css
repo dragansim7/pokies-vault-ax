@@ -1667,7 +1667,7 @@ html[data-theme="royal"] {
   gap: 6px;
 }
 
-.intel-counts span {
+.intel-counts button {
   padding: 6px 10px;
   border-radius: 999px;
   border: 1px solid color-mix(in oklab, var(--color-fg) 12%, transparent);
@@ -1675,12 +1675,17 @@ html[data-theme="royal"] {
   color: var(--color-muted);
   font-size: 0.75rem;
   font-weight: 700;
+  cursor: pointer;
 }
 
 .intel-counts .up { color: var(--color-live); }
 .intel-counts .slow { color: var(--color-slow); }
 .intel-counts .redirect { color: var(--color-cyan); }
 .intel-counts .down { color: var(--color-dead); }
+.intel-counts button.on {
+  border-color: currentColor;
+  background: color-mix(in oklab, currentColor 14%, var(--color-panel));
+}
 
 .intel-tools {
   display: flex;
