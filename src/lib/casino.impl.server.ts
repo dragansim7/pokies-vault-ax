@@ -192,7 +192,7 @@ async function readMerchant(domain: string): Promise<{ host: string; merchantId:
   const decoder = new TextDecoder();
   let html = "";
   let merchantId = "";
-  while (html.length < 700_000) {
+  while (html.length < 1_200_000) {
     const { done, value } = await reader.read();
     if (done) break;
     html += decoder.decode(value, { stream: true });
@@ -204,6 +204,30 @@ async function readMerchant(domain: string): Promise<{ host: string; merchantId:
   }
   await reader.cancel().catch(() => undefined);
   return merchantId ? { host, merchantId } : null;
+}
+
+export async function lookupMerchants(
+  domains: string[],
+): Promise<{ domain: string; host: string; merchantId: string }[]> {
+  const list = Array.from(new Set(domains.map((item) => normalizeDomain(item)).filter(isPublicDomain))).slice(0, 20);
+  const out: { domain: string; host: string; merchantId: string }[] = new Array(list.length);
+  let cursor = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(4, list.length) }, async () => {
+      for (;;) {
+        const index = cursor++;
+        if (index >= list.length) return;
+        const domain = list[index] ?? "";
+        try {
+          const found = await readMerchant(domain);
+          out[index] = { domain, host: found?.host || domain, merchantId: found?.merchantId || "" };
+        } catch {
+          out[index] = { domain, host: domain, merchantId: "" };
+        }
+      }
+    }),
+  );
+  return out;
 }
 
 export async function loadPublicCatalogue(raw: CatalogueQuery[]): Promise<CatalogueHit[]> {

@@ -28,9 +28,9 @@ function requestHost(req) {
   return Array.isArray(host) ? host[0] : host;
 }
 
-export function renderInstallPage(hostHeader, url = "/", appName = "") {
+export function renderInstallPage(hostHeader, url = "/") {
   const template = readFileSync(INSTALL_PAGE_PATH, "utf8");
-  return renderInstallPageHtml(template, { host: hostHeader, url, appName });
+  return renderInstallPageHtml(template, { host: hostHeader, url });
 }
 
 function sendHtml(res, html) {
@@ -53,8 +53,7 @@ function serveGrokPwa(middlewares) {
     }
 
     if (pathOnly === "/__grok/manifest.webmanifest" || pathOnly === "/__grok/manifest.json") {
-      const appName = String(snapshotOgIdentity().site?.title ?? "");
-      const body = Buffer.from(renderWebManifest(requestHost(req), appName), "utf8");
+      const body = Buffer.from(renderWebManifest(requestHost(req)), "utf8");
       res.statusCode = 200;
       res.setHeader("content-type", "application/manifest+json; charset=utf-8");
       res.setHeader("cache-control", "no-cache");
@@ -65,7 +64,7 @@ function serveGrokPwa(middlewares) {
 
     if (isInstallQuery(rawUrl) && isDocumentPath(pathOnly) && acceptsHtml(req.headers.accept)) {
       try {
-        sendHtml(res, renderInstallPage(requestHost(req), rawUrl, String(snapshotOgIdentity().site?.title ?? "")));
+        sendHtml(res, renderInstallPage(requestHost(req), rawUrl));
       } catch (err) {
         console.error("[app-builder] install page missing:", err);
         res.statusCode = 500;

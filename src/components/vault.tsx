@@ -11,13 +11,14 @@ import {
 import { flushSync } from "react-dom";
 import type { AccountRow } from "@/lib/parse-account";
 import { isPublicDomain, normalizeDomain } from "@/lib/domain";
-import { CATALOG_STRIPPED_KEY, clearOwnedList, loadOwnedList, saveOwnedList, siteRecord, withoutBuiltIn } from "@/lib/domain-list";
+import { CATALOG_STRIPPED_KEY, clearOwnedList, loadOwnedList, saveOwnedList, siteRecord } from "@/lib/domain-list";
 import { INTEL_KEY } from "@/lib/intel-domains";
 import { workingSites, type ListedSite } from "@/lib/working-sites";
 import { isThemeId, themeById, type ThemeId } from "@/lib/themes";
 import { isSortMode } from "@/lib/order";
 
 const KEY = "pokies_vault_v1";
+const LIST_EPOCH = "pokies_vault_user_list_v1";
 const LIST_ERROR = "The domain list could not be saved on this device, so that change was not kept.";
 
 function writeVault(state: VaultState) {
@@ -193,32 +194,33 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const saved = load();
-    const keep = new Set(
-      saved.custom
-        .map((item) => normalizeDomain(item.domain))
-        .filter(isPublicDomain),
-    );
+    let custom = saved.custom;
+    let removed = saved.removed;
+    let mine = saved.mine;
+    let visited = saved.visited;
+    let lastFetch = saved.lastFetch;
+    let attentionChecked = saved.attentionChecked;
+    if (localStorage.getItem(LIST_EPOCH) !== "1") {
+      clearOwnedList();
+      try {
+        localStorage.removeItem(INTEL_KEY);
+        localStorage.removeItem(CATALOG_STRIPPED_KEY);
+      } catch {
+        /* ignore */
+      }
+      custom = [];
+      removed = [];
+      mine = [];
+      visited = [];
+      lastFetch = null;
+      attentionChecked = [];
+    }
     const owned = loadOwnedList();
-    const base = owned ?? workingSites(saved.custom, saved.removed);
-    const stripped = localStorage.getItem(CATALOG_STRIPPED_KEY) === "1";
-    const sites = stripped ? base : withoutBuiltIn(base, keep);
-    const dropped = new Set(base.map((site) => site.domain).filter((domain) => !sites.some((site) => site.domain === domain)));
-    const mine = stripped ? saved.mine : saved.mine.filter((domain) => !dropped.has(domain));
-    const visited = stripped ? saved.visited : saved.visited.filter((domain) => !dropped.has(domain));
-    const lastFetch =
-      stripped || !saved.lastFetch
-        ? saved.lastFetch
-        : {
-            ...saved.lastFetch,
-            rows: saved.lastFetch.rows.filter((row) => !dropped.has(row.domain)),
-          };
-    const attentionChecked = stripped
-      ? saved.attentionChecked
-      : saved.attentionChecked.filter((item) => !dropped.has(item.domain));
-    const next = { ...saved, listOwned: true, sites, mine, visited, lastFetch, attentionChecked };
+    const sites = owned ?? workingSites(custom, removed);
+    const next = { ...saved, custom, removed, mine, visited, lastFetch, attentionChecked, listOwned: true, sites };
     if (saveOwnedList(sites)) {
       try {
-        localStorage.setItem(CATALOG_STRIPPED_KEY, "1");
+        localStorage.setItem(LIST_EPOCH, "1");
         writeVault(next);
       } catch {
         /* the domain list is already saved */

@@ -6,7 +6,7 @@ import { visibleSites } from "@/lib/working-sites";
 import { useVault, type AttentionMark, type FallbackCred } from "@/components/vault";
 import { SiteIcon } from "@/components/site-icon";
 import { AccountCard } from "@/components/account-card";
-import { fetchCasinoBatchFn } from "@/lib/casino.functions";
+import { fetchCasinoBatchFn, lookupMerchantsFn } from "@/lib/casino.functions";
 import { listFetchRunsFn, recordFetchRunFn } from "@/lib/fetch-log.functions";
 import type { FetchRunReport } from "@/lib/fetch-log.server";
 import { fetchAccountOnDevice } from "@/lib/fetch-on-device";
@@ -19,9 +19,11 @@ const PAGE = 12;
 const BATCH = 10;
 const RUN_KEY = "vault-run";
 const KNOWN_KEY = "pokies_vault_known_systems_v1";
-const MIN_WORKERS = 4;
-const START_WORKERS = 8;
-const MAX_WORKERS = 16;
+const MERCHANT_KEY = "pokies_vault_merchants_v1";
+const MODE_KEY = "pokies_vault_merchant_mode_v1";
+const MIN_WORKERS = 2;
+const START_WORKERS = 4;
+const MAX_WORKERS = 6;
 const RETRY_GAP_MS = 400;
 
 type RunCheckpoint = { at: number; done: string[]; rows: AccountRow[] };
@@ -105,6 +107,41 @@ function saveKnown(known: Set<string>) {
     localStorage.setItem(KNOWN_KEY, JSON.stringify([...known]));
   } catch {
     /* ignore quota */
+  }
+}
+
+function loadMerchantMap(): Record<string, { host: string; merchantId: string }> {
+  try {
+    const raw = JSON.parse(localStorage.getItem(MERCHANT_KEY) || "{}") as unknown;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+    const out: Record<string, { host: string; merchantId: string }> = {};
+    for (const [key, value] of Object.entries(raw)) {
+      const domain = normalizeDomain(key);
+      if (!isPublicDomain(domain) || !value || typeof value !== "object") continue;
+      const merchantId = String((value as { merchantId?: unknown }).merchantId ?? "");
+      const host = normalizeDomain(String((value as { host?: unknown }).host ?? domain));
+      if (!/^\d{1,12}$/.test(merchantId)) continue;
+      out[domain] = { host: isPublicDomain(host) ? host : domain, merchantId };
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+function loadModeMap(): Record<string, "id" | "blank"> {
+  try {
+    const raw = JSON.parse(localStorage.getItem(MODE_KEY) || "{}") as unknown;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+    const out: Record<string, "id" | "blank"> = {};
+    for (const [key, value] of Object.entries(raw)) {
+      const domain = normalizeDomain(key);
+      if (!isPublicDomain(domain)) continue;
+      if (value === "id" || value === "blank") out[domain] = value;
+    }
+    return out;
+  } catch {
+    return {};
   }
 }
 
@@ -430,6 +467,7 @@ function NeedsAttention({
 export function Fetcher() {
   const { state, patch, rememberAccount, rememberLogins, saveFetch } = useVault();
   const fetchBatch = useServerFn(fetchCasinoBatchFn);
+  const lookupMerchants = useServerFn(lookupMerchantsFn);
   const recordFetchRun = useServerFn(recordFetchRunFn);
   const listFetchRuns = useServerFn(listFetchRunsFn);
   const [onDevice, setOnDevice] = useState(false);
@@ -664,6 +702,75 @@ export function Fetcher() {
     let cursor = 0;
     if (fromPhone) {
       const known = loadKnown(state.logins, state.lastFetch?.rows ?? []);
+      const merchants = loadMerchantMap();
+      const modes = loadModeMap();
+      let merchantTimer: number | null = null;
+      const saveMerchantState = () => {
+        try {
+          localStorage.setItem(MERCHANT_KEY, JSON.stringify(merchants));
+          localStorage.setItem(MODE_KEY, JSON.stringify(modes));
+        } catch {
+          /* ignore quota */
+        }
+      };
+      const queueMerchantState = () => {
+        if (merchantTimer != null) return;
+        merchantTimer = window.setTimeout(() => {
+          merchantTimer = null;
+          saveMerchantState();
+        }, 1000);
+      };
+      type MerchantHit = { host: string; merchantId: string };
+      type Waiter = { domain: string; resolve: (hit: MerchantHit | null) => void };
+      const waiters: Waiter[] = [];
+      let flushTimer: number | null = null;
+      const flushMerchants = () => {
+        flushTimer = null;
+        const batch = waiters.splice(0, 12);
+        if (!batch.length) return;
+        void lookupMerchants({ data: { domains: batch.map((item) => item.domain) }, signal: controller.signal })
+          .then((rows) => {
+            const byDomain = new Map(rows.map((row) => [normalizeDomain(row.domain), row]));
+            for (const waiter of batch) {
+              const row = byDomain.get(waiter.domain);
+              if (row?.merchantId && /^\d{1,12}$/.test(row.merchantId)) {
+                const hit = { host: normalizeDomain(row.host) || waiter.domain, merchantId: row.merchantId };
+                merchants[waiter.domain] = hit;
+                waiter.resolve(hit);
+              } else {
+                waiter.resolve(null);
+              }
+            }
+            queueMerchantState();
+          })
+          .catch(() => {
+            for (const waiter of batch) waiter.resolve(null);
+          })
+          .finally(() => {
+            if (waiters.length && !controller.signal.aborted) flushMerchants();
+          });
+      };
+      const merchantFor = (domain: string) => {
+        const cached = merchants[domain];
+        if (cached?.merchantId) return Promise.resolve(cached);
+        return new Promise<MerchantHit | null>((resolve) => {
+          const timer = window.setTimeout(() => resolve(null), 12_000);
+          waiters.push({
+            domain,
+            resolve: (hit) => {
+              window.clearTimeout(timer);
+              resolve(hit);
+            },
+          });
+          if (waiters.length >= 8) {
+            if (flushTimer != null) window.clearTimeout(flushTimer);
+            flushMerchants();
+            return;
+          }
+          if (flushTimer != null) return;
+          flushTimer = window.setTimeout(flushMerchants, 40);
+        });
+      };
       const jobs = unique
         .map((domain) => ({ domain, creds: credsFor(domain, creds, state.logins) }))
         .filter((job) => job.creds.length);
@@ -722,7 +829,9 @@ export function Fetcher() {
               for (const cred of job.creds) {
                 if (controller.signal.aborted) return;
                 attempts += 1;
-                let result: { row: AccountRow; confirmed: boolean };
+                const hit = await merchantFor(job.domain);
+                if (controller.signal.aborted) return;
+                let result: { row: AccountRow; confirmed: boolean; mode: "id" | "blank" | null };
                 try {
                   result = await fetchAccountOnDevice({
                     domain: job.domain,
@@ -730,10 +839,17 @@ export function Fetcher() {
                     password: cred.password,
                     signal: controller.signal,
                     knownSystem: known.has(job.domain),
+                    host: hit?.host,
+                    merchantId: hit?.merchantId,
+                    preferBlank: modes[job.domain] === "blank",
                   });
                 } catch (error) {
                   if (controller.signal.aborted || (error instanceof DOMException && error.name === "AbortError")) return;
-                  result = { row: { domain: job.domain, ok: false, code: "other", message: "Check failed" }, confirmed: false };
+                  result = { row: { domain: job.domain, ok: false, code: "other", message: "Check failed" }, confirmed: false, mode: null };
+                }
+                if (result.mode) {
+                  modes[job.domain] = result.mode;
+                  queueMerchantState();
                 }
                 if (result.confirmed) {
                   known.add(job.domain);
@@ -789,7 +905,10 @@ export function Fetcher() {
         spawn();
       });
       if (knownTimer != null) window.clearTimeout(knownTimer);
+      if (merchantTimer != null) window.clearTimeout(merchantTimer);
+      if (flushTimer != null) window.clearTimeout(flushTimer);
       saveKnown(known);
+      saveMerchantState();
     } else {
     const vaultLimit = Math.min(2, batches.length);
     let vaultActive = 0;
@@ -957,9 +1076,9 @@ export function Fetcher() {
           Fetch bonus data
         </h1>
         <p className="hint">
-          Sign-in stays on this device. Eight sites start at once and it rises to sixteen while sign-ins keep
-          working. Each site is a different server, so one casino is not logged into over and over. The
-          password is not sent through the vault. A hit is remembered here and used first next time.
+          Sign-in stays on this device. Four sites run at once. The vault only reads each site's public
+          merchant number, then this phone signs in. If that number is rejected, it tries once without it
+          and remembers which one worked. The password is not sent through the vault.
         </p>
         {Object.keys(state.logins).length ? (
           <p className="hint">{Object.keys(state.logins).length} sites have a saved login.</p>

@@ -42,6 +42,14 @@ export const fetchCasinoBatchFn = createServerFn({ method: "POST" })
     return fetchCasinoBatch(data);
   });
 
+export const lookupMerchantsFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((data: { domains: string[] }) => data)
+  .handler(async ({ data }): Promise<{ domain: string; host: string; merchantId: string }[]> => {
+    const { lookupMerchants } = await import("@/lib/casino.impl.server");
+    return lookupMerchants(data.domains);
+  });
+
 export const resolveCasinoTargetsFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((data: { domains: string[] }) => data)

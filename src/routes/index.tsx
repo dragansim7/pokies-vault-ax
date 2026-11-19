@@ -14,8 +14,7 @@ function Home() {
           <article className="story-card">
             <h3>The list</h3>
             <p>
-              New, best, unverified, share, and the long tail stay grouped. Search, hide sites you have already
-              opened, and bookmark only the ones that are yours.
+              The list starts empty. Add the sites you use in Domain Intel. Nothing is loaded for you.
             </p>
           </article>
           <article className="story-card">

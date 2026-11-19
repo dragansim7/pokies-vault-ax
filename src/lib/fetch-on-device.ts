@@ -1,5 +1,5 @@
 import type { CasinoTarget } from "@/lib/casino-target";
-import { normalizeDomain } from "@/lib/domain";
+import { isPublicDomain, normalizeDomain } from "@/lib/domain";
 import { accountError, parseSyncUser, type AccountCode, type AccountRow } from "@/lib/parse-account";
 
 type ApiBody = {
@@ -228,24 +228,49 @@ export async function fetchAccountOnDevice(input: {
   password: string;
   signal?: AbortSignal;
   knownSystem?: boolean;
-}): Promise<{ row: AccountRow; confirmed: boolean }> {
+  host?: string;
+  merchantId?: string;
+  preferBlank?: boolean;
+}): Promise<{ row: AccountRow; confirmed: boolean; mode: "id" | "blank" | null }> {
   const domain = normalizeDomain(input.domain);
   let promotions: unknown;
   if (!input.knownSystem) {
     const probed = await probeSite(domain, input.signal);
-    if (!probed.ok) return { row: accountError(domain, probed.code, probed.message), confirmed: false };
+    if (!probed.ok) return { row: accountError(domain, probed.code, probed.message), confirmed: false, mode: null };
     promotions = probed.promotions;
   }
-  return {
-    row: await fetchOne(
-      { domain, ok: true, host: domain, merchantId: "" },
-      input.phone,
-      input.password,
-      input.signal,
-      promotions,
-    ),
-    confirmed: true,
-  };
+  const host = input.host && isPublicDomain(normalizeDomain(input.host)) ? normalizeDomain(input.host) : domain;
+  const merchantId = input.merchantId && /^\d{1,12}$/.test(input.merchantId) ? input.merchantId : "";
+  const blankFirst = input.preferBlank || !merchantId;
+  const order = blankFirst ? ["", merchantId] : [merchantId, ""];
+  const tried = new Set<string>();
+  let last: AccountRow = accountError(domain, "invalid_login", "Not your account");
+  for (const id of order) {
+    if (tried.has(id)) continue;
+    tried.add(id);
+    if (tried.size > 1) {
+      await new Promise((resolve, reject) => {
+        if (input.signal?.aborted) {
+          reject(new DOMException("Aborted", "AbortError"));
+          return;
+        }
+        const timer = setTimeout(resolve, 400);
+        input.signal?.addEventListener(
+          "abort",
+          () => {
+            clearTimeout(timer);
+            reject(new DOMException("Aborted", "AbortError"));
+          },
+          { once: true },
+        );
+      });
+    }
+    const row = await fetchOne({ domain, ok: true, host, merchantId: id }, input.phone, input.password, input.signal, promotions);
+    if (row.ok) return { row, confirmed: true, mode: id ? "id" : "blank" };
+    last = row;
+    if (row.code !== "invalid_login") break;
+  }
+  return { row: last, confirmed: true, mode: null };
 }
 
 export async function fetchAccountsOnDevice(input: {
