@@ -106,7 +106,12 @@ export function BonusFinder() {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    let list = domains.filter((domain) => !q || domain.includes(q));
+    let list = domains.filter((domain) => {
+      if (!q) return true;
+      if (domain.includes(q)) return true;
+      const bonuses = cache[domain]?.bonuses ?? [];
+      return bonuses.some((bonus) => bonus.name.toLowerCase().includes(q));
+    });
     if (filters.slots.length) {
       list = list.filter((domain) => {
         const row = cache[domain];
@@ -213,8 +218,8 @@ export function BonusFinder() {
         <label className="search">
           <input
             value={query}
-            placeholder="Search this list"
-            aria-label="Search domains"
+            placeholder="Search domains or bonuses"
+            aria-label="Search domains or bonuses"
             onChange={(event) => {
               setQuery(event.target.value);
               setPage(0);
