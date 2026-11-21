@@ -21,10 +21,9 @@ const RUN_KEY = "vault-run";
 const KNOWN_KEY = "pokies_vault_known_systems_v1";
 const MERCHANT_KEY = "pokies_vault_merchants_v1";
 const MODE_KEY = "pokies_vault_merchant_mode_v1";
-const MIN_WORKERS = 2;
-const START_WORKERS = 4;
-const MAX_WORKERS = 6;
-const RETRY_GAP_MS = 400;
+const START_WORKERS = 16;
+const START_GAP_MS = 500;
+const RETRY_GAP_MS = 7_000;
 
 type RunCheckpoint = { at: number; done: string[]; rows: AccountRow[] };
 
@@ -776,26 +775,35 @@ export function Fetcher() {
         .filter((job) => job.creds.length);
       let limit = START_WORKERS;
       let active = 0;
-      let pressure = 0;
-      let streak = 0;
-      let spawn = () => {};
-      const noteOutcome = (kind: "ok" | "bad") => {
-        if (kind === "bad") {
-          streak = 0;
-          pressure += 1;
-          if (pressure >= 3 && limit > MIN_WORKERS) {
-            limit = Math.max(MIN_WORKERS, limit - 2);
-            pressure = 0;
+      let lastStart = 0;
+      let slot: Promise<void> = Promise.resolve();
+      const pause = (ms: number) =>
+        new Promise<void>((resolve, reject) => {
+          if (controller.signal.aborted) {
+            reject(new DOMException("Aborted", "AbortError"));
+            return;
           }
-        } else {
-          pressure = Math.max(0, pressure - 1);
-          streak += 1;
-          if (streak >= 8 && limit < MAX_WORKERS) {
-            limit += 2;
-            streak = 0;
-            spawn();
-          }
-        }
+          const onAbort = () => {
+            window.clearTimeout(timer);
+            reject(new DOMException("Aborted", "AbortError"));
+          };
+          const timer = window.setTimeout(() => {
+            controller.signal.removeEventListener("abort", onAbort);
+            resolve();
+          }, ms);
+          controller.signal.addEventListener("abort", onAbort, { once: true });
+        });
+      const takeSlot = () => {
+        const run = slot.then(async () => {
+          const wait = Math.max(0, START_GAP_MS - (Date.now() - lastStart));
+          if (wait) await pause(wait);
+          lastStart = Date.now();
+        });
+        slot = run.then(
+          () => undefined,
+          () => undefined,
+        );
+        return run;
       };
       let knownTimer: number | null = null;
       const queueKnown = () => {
@@ -805,6 +813,7 @@ export function Fetcher() {
           saveKnown(known);
         }, 1000);
       };
+      let spawn = () => {};
       await new Promise<void>((resolve) => {
         const finish = () => {
           if (active === 0 && (controller.signal.aborted || cursor >= jobs.length)) resolve();
@@ -826,56 +835,7 @@ export function Fetcher() {
               let attempts = 0;
               let retries = 0;
               let last: AccountRow = { domain: job.domain, ok: false, code: "invalid_login", message: "Not your account" };
-              for (const cred of job.creds) {
-                if (controller.signal.aborted) return;
-                attempts += 1;
-                const hit = await merchantFor(job.domain);
-                if (controller.signal.aborted) return;
-                let result: { row: AccountRow; confirmed: boolean; mode: "id" | "blank" | null };
-                try {
-                  result = await fetchAccountOnDevice({
-                    domain: job.domain,
-                    phone: cred.phone,
-                    password: cred.password,
-                    signal: controller.signal,
-                    knownSystem: known.has(job.domain),
-                    host: hit?.host,
-                    merchantId: hit?.merchantId,
-                    preferBlank: modes[job.domain] === "blank",
-                  });
-                } catch (error) {
-                  if (controller.signal.aborted || (error instanceof DOMException && error.name === "AbortError")) return;
-                  result = { row: { domain: job.domain, ok: false, code: "other", message: "Check failed" }, confirmed: false, mode: null };
-                }
-                if (result.mode) {
-                  modes[job.domain] = result.mode;
-                  queueMerchantState();
-                }
-                if (result.confirmed) {
-                  known.add(job.domain);
-                  queueKnown();
-                }
-                const row = result.row;
-                if (row.ok) {
-                  noteOutcome("ok");
-                  liveRef.current = {
-                    ...liveRef.current,
-                    fetchMs: liveRef.current.fetchMs + (Date.now() - startedTry),
-                    attempts: liveRef.current.attempts + attempts,
-                    retries: liveRef.current.retries + retries,
-                    workers: limit,
-                  };
-                  publish([row], [{ domain: job.domain, login: cred }]);
-                  return;
-                }
-                if (row.code === "invalid_login") {
-                  retries += 1;
-                  last = row;
-                  if (controller.signal.aborted) return;
-                  await new Promise((resolve) => window.setTimeout(resolve, RETRY_GAP_MS));
-                  continue;
-                }
-                if (row.code === "timeout" || row.code === "captcha") noteOutcome("bad");
+              const finishStats = () => {
                 liveRef.current = {
                   ...liveRef.current,
                   fetchMs: liveRef.current.fetchMs + (Date.now() - startedTry),
@@ -883,17 +843,83 @@ export function Fetcher() {
                   retries: liveRef.current.retries + retries,
                   workers: limit,
                 };
-                publish([row], []);
-                return;
-              }
-              liveRef.current = {
-                ...liveRef.current,
-                fetchMs: liveRef.current.fetchMs + (Date.now() - startedTry),
-                attempts: liveRef.current.attempts + attempts,
-                retries: liveRef.current.retries + retries,
-                workers: limit,
               };
-              publish([last], [{ domain: job.domain, login: null }]);
+              const attempt = async (cred: FallbackCred, only?: "id" | "blank") => {
+                await takeSlot();
+                if (controller.signal.aborted) return null;
+                attempts += 1;
+                const hit = await merchantFor(job.domain);
+                if (controller.signal.aborted) return null;
+                const merchantId = hit?.merchantId && /^\d{1,12}$/.test(hit.merchantId) ? hit.merchantId : "";
+                const used: "id" | "blank" = only === "id" && merchantId ? "id" : only === "blank" || !merchantId ? "blank" : "id";
+                try {
+                  const result = await fetchAccountOnDevice({
+                    domain: job.domain,
+                    phone: cred.phone,
+                    password: cred.password,
+                    signal: controller.signal,
+                    knownSystem: known.has(job.domain),
+                    host: hit?.host,
+                    merchantId,
+                    preferBlank: used === "blank",
+                    only: used,
+                  });
+                  return { result, used, merchantId };
+                } catch (error) {
+                  if (controller.signal.aborted || (error instanceof DOMException && error.name === "AbortError")) return null;
+                  return {
+                    result: {
+                      row: { domain: job.domain, ok: false as const, code: "other" as const, message: "Check failed" },
+                      confirmed: false,
+                      mode: null,
+                    },
+                    used,
+                    merchantId,
+                  };
+                }
+              };
+              try {
+                for (let i = 0; i < job.creds.length; i += 1) {
+                  const cred = job.creds[i];
+                  if (!cred || controller.signal.aborted) return;
+                  if (i > 0) {
+                    retries += 1;
+                    await pause(RETRY_GAP_MS);
+                  }
+                  const remembered = modes[job.domain];
+                  const first = await attempt(
+                    cred,
+                    remembered === "id" || remembered === "blank" ? remembered : undefined,
+                  );
+                  if (!first) return;
+                  if (first.result.mode) {
+                    modes[job.domain] = first.result.mode;
+                    queueMerchantState();
+                  }
+                  if (first.result.confirmed) {
+                    known.add(job.domain);
+                    queueKnown();
+                  }
+                  const row = first.result.row;
+                  if (row.ok) {
+                    finishStats();
+                    publish([row], [{ domain: job.domain, login: cred }]);
+                    return;
+                  }
+                  if (row.code === "captcha" || row.code === "timeout" || row.code !== "invalid_login") {
+                    finishStats();
+                    publish([row], []);
+                    return;
+                  }
+                  last = row;
+                }
+                finishStats();
+                publish([last], [{ domain: job.domain, login: null }]);
+              } catch (error) {
+                if (controller.signal.aborted || (error instanceof DOMException && error.name === "AbortError")) return;
+                finishStats();
+                publish([{ domain: job.domain, ok: false, code: "other", message: "Check failed" }], []);
+              }
             })().finally(() => {
               active -= 1;
               spawn();
